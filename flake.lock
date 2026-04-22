@@ -1,0 +1,177 @@
+{
+  "nodes": {
+    "f3-baremetal": {
+      "inputs": {
+        "nano": [
+          "nano"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "roboenv": [
+          "roboenv"
+        ]
+      },
+      "locked": {
+        "lastModified": 1776854466,
+        "narHash": "sha256-Ba/Lq+WraSGgGyGFwOk5u3hmbiqouqm4R0f/5Xv8OuA=",
+        "path": "/home/syoch/ghq/github.com/syoch/libs-dev/libs/f3-baremetal",
+        "type": "path"
+      },
+      "original": {
+        "path": "/home/syoch/ghq/github.com/syoch/libs-dev/libs/f3-baremetal",
+        "type": "path"
+      }
+    },
+    "flake-compat": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1767039857,
+        "narHash": "sha256-vNpUSpF5Nuw8xvDLj2KCwwksIbjua2LZCqhV1LNRDns=",
+        "owner": "edolstra",
+        "repo": "flake-compat",
+        "rev": "5edf11c44bc78a0d334f6334cdaf7d60d732daab",
+        "type": "github"
+      },
+      "original": {
+        "owner": "edolstra",
+        "repo": "flake-compat",
+        "type": "github"
+      }
+    },
+    "home-manager": {
+      "inputs": {
+        "nixpkgs": [
+          "roboenv",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1772380461,
+        "narHash": "sha256-O3ukj3Bb3V0Tiy/4LUfLlBpWypJ9P0JeUgsKl2nmZZY=",
+        "owner": "nix-community",
+        "repo": "home-manager",
+        "rev": "f140aa04d7d14f8a50ab27f3691b5766b17ae961",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "home-manager",
+        "type": "github"
+      }
+    },
+    "nano": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "roboenv": [
+          "roboenv"
+        ]
+      },
+      "locked": {
+        "lastModified": 1775355334,
+        "narHash": "sha256-GipsobTszeH4PULwUJWVtZ2siC5LX+2qqixT1JmQhj8=",
+        "owner": "nnctroboticsclub",
+        "repo": "nano",
+        "rev": "f4c6aa2d6e61071374bd41912d8b5ea65777516a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nnctroboticsclub",
+        "repo": "nano",
+        "type": "github"
+      }
+    },
+    "nixos-wsl": {
+      "inputs": {
+        "flake-compat": "flake-compat",
+        "nixpkgs": [
+          "roboenv",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1772386632,
+        "narHash": "sha256-sm6OpWZuoDwR53KNlsY482YOoHFWlWYwt0wHmqLkRGE=",
+        "owner": "nix-community",
+        "repo": "NixOS-WSL",
+        "rev": "be894604b2aa2184c0b3d3b44995acd0da14dc0c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "ref": "main",
+        "repo": "NixOS-WSL",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1776860000,
+        "narHash": "sha256-GNjVhkVMLqIDs11cedpQ4yw3UYldzlP+C5RmpClhk9c=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "f6e701f756f3ab1258dc103e3d0cf124cb6ff6e7",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "release-25.11",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "roboenv": {
+      "inputs": {
+        "home-manager": "home-manager",
+        "nixos-wsl": "nixos-wsl",
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": "rust-overlay"
+      },
+      "locked": {
+        "lastModified": 1776862027,
+        "narHash": "sha256-a9qK8e6gcVG8GsLmSu4ZRAj/kFgqYFnm4RnhzFbd8/8=",
+        "path": "/home/syoch/ghq/github.com/syoch/libs-dev/libs/roboenv-nix",
+        "type": "path"
+      },
+      "original": {
+        "path": "/home/syoch/ghq/github.com/syoch/libs-dev/libs/roboenv-nix",
+        "type": "path"
+      }
+    },
+    "root": {
+      "inputs": {
+        "f3-baremetal": "f3-baremetal",
+        "nano": "nano",
+        "nixpkgs": "nixpkgs",
+        "roboenv": "roboenv"
+      }
+    },
+    "rust-overlay": {
+      "inputs": {
+        "nixpkgs": [
+          "roboenv",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1772420823,
+        "narHash": "sha256-q3oVwz1Rx41D1D+F6vg41kpOkk3Zi3KwnkHEZp7DCGs=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "458eea8d905c609e9d889423e6b8a1c7bc2f792c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
