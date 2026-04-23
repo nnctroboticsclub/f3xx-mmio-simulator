@@ -21,7 +21,7 @@ class CANDebug_Seq {
     };
     InitTimer<Handler>();
 
-    printf("\x1b[2J");  // Clear Screen
+    // printf("\x1b[2J");  // Clear Screen
     kEventLog.Log("CAN Initialized");
 
     auto rx = [](int _, stm32f3::can::CANMessage const& msg) {
@@ -37,7 +37,7 @@ class CANDebug_Seq {
     int i = 0;
     while (true) {
       //* UI
-      printf("\x1b[0;1H");
+      // printf("\x1b[0;1H");
 
       printf("F303K8 baremetal CAN Test (loop=%d)" NEWLINE, i);
 

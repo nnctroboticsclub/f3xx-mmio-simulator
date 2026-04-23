@@ -6,8 +6,8 @@
 
 #include <f3/console.hpp>
 
-using App = CanDebug;
-// using App = CANMonitor::CANDebug_Seq;
+// using App = CanDebug;
+using App = CANMonitor::CANDebug_Seq;
 
 struct HardwareConfig {
   using RCCConfig = CANMonitor::BaremetalRCC;

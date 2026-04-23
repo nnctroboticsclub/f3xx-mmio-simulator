@@ -53,7 +53,7 @@ class TIMRegion : public MMIORegion {
         return;
       }
     } else if (offset == 0x10) {  // SR
-      return;                     // noaction
+      return;
     }
 
     printf("TIM%d: %08x <- %08x\n", index, offset, value);

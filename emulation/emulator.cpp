@@ -71,12 +71,23 @@ static void handler(int sig, siginfo_t* si, void* platform) {
   using mcu_emulator::machine_code::SIB;
 
   auto code_buf = reinterpret_cast<uint8_t*>(pc);
+  if ((*code_buf & 0xF0) == 0x40) {  // REX prefix
+    uint8_t rex = *code_buf;
+    code_buf += 1;
+    pc += 1;
+  }
+  if (*code_buf == 0x66) {  // 16-bit operand prefix
+    code_buf += 1;
+    pc += 1;
+  }
+
   if (code_buf[0] == 0x8B) {  // MOV Ev, Gv
     ModRM modrm(code_buf[1]);
     size_t inst_len = 2;
-    if (modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
-      auto value = region->read(offset);
-      auto reg = modrm.GetReg();
+    auto value = region->read(offset);
+    auto reg = modrm.GetReg();
+
+    if (modrm.GetMod() != ModRM::Mod::MOD_REG) {
       auto r_m = modrm.GetRm();
 
       if (r_m.Encode() == 0b101) {
@@ -84,414 +95,387 @@ static void handler(int sig, siginfo_t* si, void* platform) {
         goto fail;
       }
       if (r_m.Encode() == 0b100) {
-        SIB sib(code_buf[2]);
+        SIB sib(code_buf[inst_len]);
         inst_len += 1;
-        if (sib.Base().Encode() == 0b101) {
+        if (sib.Base().Encode() == 0b101 and
+            modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
           inst_len += 4;
         }
       }
-
-      reg.Write(mcontext, value);
-
-      pc += inst_len;  // Skip instruction
-      // printf("SIGSEGV: %p --> %08x\n", address, value);
-      // printf("SIGSEGV: PC: %llx (skiped %d Bytes)\n", pc, inst_len);
-      // printf("\x1b[2;32m--------\x1b[m MMIO Trap \x1b[2;32m--------\x1b[m\n");
-      return;
-    } else if (modrm.GetMod() == ModRM::Mod::MOD_DISP8) {
-      auto value = region->read(offset);
-      // auto disp = code_buf[2];
-      auto reg = modrm.GetReg();
-      // auto rm = modrm.GetRm();
-      const auto inst_len = 3;
-      // printf("%s <-- [%s + 0x%04x] (==> 0x%08x)\n", reg.ToString().c_str(),
-      //        rm.ToString().c_str(), disp, value);
-
-      reg.Write(mcontext, value);
-
-      pc += inst_len;  // Skip instruction
-      // printf("SIGSEGV: %p --> %08x\n", address, value);
-      // printf("SIGSEGV: PC: %llx (skiped %d Bytes)\n", pc, inst_len);
-      // printf("\x1b[2;32m--------\x1b[m MMIO Trap \x1b[2;32m--------\x1b[m\n");
-      return;
-    } else if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
-      auto value = region->read(offset);
-      // auto disp = *reinterpret_cast<uint32_t*>(code_buf + 2);
-      auto reg = modrm.GetReg();
-      // auto rm = modrm.GetRm();
-      const auto inst_len = 6;
-      // printf("%s <-- [%s + 0x%04x] (==> 0x%08x)\n", reg.ToString().c_str(),
-      //        rm.ToString().c_str(), disp, value);
-
-      reg.Write(mcontext, value);
-
-      pc += inst_len;  // Skip instruction
-      // printf("SIGSEGV: %p --> %08x\n", address, value);
-      // printf("SIGSEGV: PC: %llx (skiped %d Bytes)\n", pc, inst_len);
-      // printf("\x1b[2;32m--------\x1b[m MMIO Trap \x1b[2;32m--------\x1b[m\n");
-      return;
     }
-  } else if (code_buf[0] == 0x66) {  // 16 Bit prefix
-    if (code_buf[1] == 0x89) {
-      ModRM modrm(code_buf[2]);
-      if (modrm.GetMod() == ModRM::Mod::MOD_DISP8) {
-        // auto disp = code_buf[3];
-        auto reg = modrm.GetReg();
-        // auto rm = modrm.GetRm();
-        const auto inst_len = 4;
-        auto value = static_cast<uint32_t>(reg.Read(mcontext)) & 0xFFFF;
 
-        // printf("[%s + 0x%04x] <-- %s (==> 0x%04x) \n", rm.ToString().c_str(),
-        //        disp, reg.ToString().c_str(), value);
-        region->write_u32(offset, value);
-
-        pc += inst_len;  // Skip instruction
-        // printf("SIGSEGV: %p <-- %08x\n", address, value);
-        // printf("SIGSEGV: PC: %llx (skiped %d Bytes)\n", pc, inst_len);
-        // printf("\x1b[2;32m--------\x1b[m MMIO Trap \x1b[2;32m--------\x1b[m\n");
-        return;
-      }
-    }
-  } else if (code_buf[0] == 0x89) {  // Mov Gv, Ev
-    ModRM modrm(code_buf[1]);
-    if (modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
-      auto reg = modrm.GetReg();
-      auto rm = modrm.GetRm();
-      const auto inst_len = 2;
-      auto value = static_cast<uint32_t>(reg.Read(mcontext));
-
-      // printf("[%s] <-- %s (==> 0x%08x) \n", rm.ToString().c_str(),
-      //        reg.ToString().c_str(), value);
-      region->write_u32(offset, value);
-
-      pc += inst_len;  // Skip instruction
-      // printf("SIGSEGV: %p <-- %08x\n", address, value);
-      // printf("SIGSEGV: PC: %llx (skiped %d Bytes)\n", pc, inst_len);
-      // printf("\x1b[2;32m--------\x1b[m MMIO Trap \x1b[2;32m--------\x1b[m\n");
-      return;
-    } else if (modrm.GetMod() == ModRM::Mod::MOD_DISP8) {
-      auto disp = code_buf[2];
-      auto reg = modrm.GetReg();
-      auto rm = modrm.GetRm();
-      const auto inst_len = 3;
-      auto value = static_cast<uint32_t>(reg.Read(mcontext));
-
-      // printf("[%s + 0x%04x] <-- %s (==> 0x%08x) \n", rm.ToString().c_str(),
-      //        disp, reg.ToString().c_str(), value);
-      region->write_u32(offset, value);
-
-      pc += inst_len;  // Skip instruction
-      // printf("SIGSEGV: %p <-- %08x\n", address, value);
-      // printf("SIGSEGV: PC: %llx (skiped %d Bytes)\n", pc, inst_len);
-      // printf("\x1b[2;32m--------\x1b[m MMIO Trap \x1b[2;32m--------\x1b[m\n");
-      return;
-    } else if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
-      auto disp = *reinterpret_cast<uint32_t*>(code_buf + 2);
-      auto reg = modrm.GetReg();
-      auto rm = modrm.GetRm();
-      const auto inst_len = 6;
-      auto value = static_cast<uint32_t>(reg.Read(mcontext));
-
-      // printf("[%s + 0x%04x] <-- %s (==> 0x%08x) \n", rm.ToString().c_str(),
-      //        disp, reg.ToString().c_str(), value);
-      region->write_u32(offset, value);
-
-      pc += inst_len;  // Skip instruction
-      // printf("SIGSEGV: %p <-- %08x\n", address, value);
-      // printf("SIGSEGV: PC: %llx (skiped %d Bytes)\n", pc, inst_len);
-      // printf("\x1b[2;32m--------\x1b[m MMIO Trap \x1b[2;32m--------\x1b[m\n");
-      return;
-    }
-  } else if (code_buf[0] == 0xc7) {  // Mov Gv, Ev
-    ModRM modrm(code_buf[1]);
     if (modrm.GetMod() == ModRM::Mod::MOD_DISP8) {
-      auto disp = code_buf[2];
-      auto imm = *reinterpret_cast<uint32_t*>(code_buf + 3);
-      auto rm = modrm.GetRm();
-      const auto inst_len = 7;
+      inst_len += 1;
+    } else if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
+      inst_len += 4;
+    }
 
-      // printf("[%s + 0x%02x] <-- 0x%08x \n", rm.ToString().c_str(), disp, imm);
+    reg.Write(mcontext, value);
+    pc += inst_len;  // Skip instruction
+    return;
+  }
+  if (code_buf[0] == 0x89) {  // Mov Gv, Ev
+    ModRM modrm(code_buf[1]);
+    auto inst_len = 2;
 
-      region->write_u32(offset, imm);
+    if (modrm.GetMod() != ModRM::Mod::MOD_REG) {
+      auto r_m = modrm.GetRm();
 
-      pc += inst_len;  // Skip instruction
-      // printf("SIGSEGV: %p <-- %08x\n", address, value);
-      // printf("SIGSEGV: PC: %llx (skiped %d Bytes)\n", pc, inst_len);
-      // printf("\x1b[2;32m--------\x1b[m MMIO Trap \x1b[2;32m--------\x1b[m\n");
-      return;
-    } else if (modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
-      auto imm = *reinterpret_cast<uint32_t*>(code_buf + 2);
-      auto rm = modrm.GetRm();
-      auto inst_len = 6;
-
-      if (rm.Encode() == 0b101) {
-        printf("Unhandled instruction: C7h with rm=0b101[rbp] (disp32)\n");
+      if (r_m.Encode() == 0b101) {
+        printf("Unhandled instruction: 8Bh with rm=0b101[rbp] (disp32)\n");
         goto fail;
       }
-      if (rm.Encode() == 0b100) {  // mod r/m takes sib
-        SIB sib(code_buf[2]);
+      if (r_m.Encode() == 0b100) {
+        SIB sib(code_buf[inst_len]);
         inst_len += 1;
-        if (sib.Base().Encode() == 0b101) {  // sib takes disp32
+        if (sib.Base().Encode() == 0b101 and
+            modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
           inst_len += 4;
         }
       }
-
-      region->write_u32(offset, imm);
-
-      pc += inst_len;  // Skip instruction
-      return;
     }
-  } else if (code_buf[0] == 0x88) {  // mov rm <-- reg (8bit)
+
+    if (modrm.GetMod() == ModRM::Mod::MOD_DISP8) {
+      inst_len += 1;
+    } else if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
+      inst_len += 4;
+    }
+
+    auto value = static_cast<uint32_t>(modrm.GetReg().Read(mcontext));
+    region->write_u32(offset, value);
+    pc += inst_len;  // Skip instruction
+
+    return;
+  }
+  if (code_buf[0] == 0xc7) {  // Mov Gv, Ev
     ModRM modrm(code_buf[1]);
-    if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
-      if (modrm.GetRm().Index() == REG_RSP) {
-        SIB sib(code_buf[2]);
-        auto disp = *reinterpret_cast<uint32_t*>(code_buf + 3);
-        const auto inst_len = 7;
+    auto inst_len = 2;
 
-        auto value = modrm.GetReg().Read(mcontext) & 0xFF;
-        region->write_u8(offset, value);
+    if (modrm.GetMod() != ModRM::Mod::MOD_REG) {
+      auto r_m = modrm.GetRm();
 
-        pc += inst_len;  // Skip instruction
+      if (r_m.Encode() == 0b101) {
+        printf("Unhandled instruction: 8Bh with rm=0b101[rbp] (disp32)\n");
+        goto fail;
       }
-      return;
+      if (r_m.Encode() == 0b100) {
+        SIB sib(code_buf[inst_len]);
+        inst_len += 1;
+        if (sib.Base().Encode() == 0b101 and
+            modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
+          inst_len += 4;
+        }
+      }
     }
-  } else if (code_buf[0] == 0x0f and code_buf[1] == 0xb7) {  // reg32 <-- rm8
+
+    if (modrm.GetMod() == ModRM::Mod::MOD_DISP8) {
+      inst_len += 1;
+    } else if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
+      inst_len += 4;
+    }
+
+    auto imm = *reinterpret_cast<uint32_t*>(code_buf + inst_len);
+    inst_len += 4;
+
+    region->write_u32(offset, imm);
+    pc += inst_len;  // Skip instruction
+    return;
+  }
+  if (code_buf[0] == 0x88) {  // mov rm <-- reg (8bit)
+    ModRM modrm(code_buf[1]);
+    auto inst_len = 2;
+
+    if (modrm.GetMod() != ModRM::Mod::MOD_REG) {
+      auto r_m = modrm.GetRm();
+
+      if (r_m.Encode() == 0b101) {
+        printf("Unhandled instruction: 8Bh with rm=0b101[rbp] (disp32)\n");
+        goto fail;
+      }
+      if (r_m.Encode() == 0b100) {
+        SIB sib(code_buf[inst_len]);
+        inst_len += 1;
+        if (sib.Base().Encode() == 0b101 and
+            modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
+          inst_len += 4;
+        }
+      }
+    }
+
+    if (modrm.GetMod() == ModRM::Mod::MOD_DISP8) {
+      inst_len += 1;
+    } else if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
+      inst_len += 4;
+    }
+
+    auto value = modrm.GetReg().Read(mcontext) & 0xFF;
+    region->write_u8(offset, value);
+
+    pc += inst_len;  // Skip instruction
+    return;
+  }
+  if (code_buf[0] == 0x0f and code_buf[1] == 0xb7) {  // reg32 <-- rm8
     auto modrm = ModRM(code_buf[2]);
+    auto inst_len = 3;
+
+    if (modrm.GetMod() != ModRM::Mod::MOD_REG) {
+      auto r_m = modrm.GetRm();
+
+      if (r_m.Encode() == 0b101) {
+        printf("Unhandled instruction: 8Bh with rm=0b101[rbp] (disp32)\n");
+        goto fail;
+      }
+      if (r_m.Encode() == 0b100) {
+        SIB sib(code_buf[inst_len]);
+        inst_len += 1;
+        if (sib.Base().Encode() == 0b101 and
+            modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
+          inst_len += 4;
+        }
+      }
+    }
+
     if (modrm.GetMod() == ModRM::Mod::MOD_DISP8) {
-      const auto inst_len = 4;
-      auto reg = modrm.GetReg();
-
-      reg.Write(mcontext, region->read(offset));
-
-      pc += inst_len;  // Skip instruction
-      return;
+      inst_len += 1;
+    } else if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
+      inst_len += 4;
     }
-  } else if (code_buf[0] == 0x83) {
+
+    modrm.GetReg().Write(mcontext, region->read(offset));
+    pc += inst_len;  // Skip instruction
+    return;
+  }
+  if (code_buf[0] == 0x83) {
     ModRM modrm(code_buf[1]);
-    if (modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
-      auto mode = modrm.GetReg();
-      auto rm = modrm.GetRm();
-      void* mem_addr = nullptr;
-      uint8_t imm = 0;
-      int code_len = 0;
-      if (rm.Encode() == 0b101) {
-        printf("Unhandled instruction: 83h with rm=0b101[rbp] (disp32)\n");
-        goto fail;
-      } else if (rm.Encode() == 0b100) {
-        SIB sib(code_buf[2]);
-        auto index =
-            sib.Index().Encode() == 0b100 ? 0 : sib.Index().Read(mcontext);
-        auto scale = 1 << static_cast<int>(sib.Scale());
-        uint32_t base = 0;
-        if (sib.Base().Encode() == 0b101) {
-          base |= code_buf[3];
-          base |= static_cast<uint32_t>(code_buf[4]) << 8;
-          base |= static_cast<uint32_t>(code_buf[5]) << 16;
-          base |= static_cast<uint32_t>(code_buf[6]) << 24;
-          code_len = 7;
-        } else {
-          base = sib.Base().Read(mcontext);
-          code_len = 3;
-        }
-        mem_addr = reinterpret_cast<void*>(base + index * scale);
-      } else {
-        mem_addr = reinterpret_cast<void*>(rm.Read(mcontext));
-        code_len = 2;
-      }
-      imm = code_buf[code_len];
-      const auto inst_len = code_len + 1;
+    auto mode = modrm.GetReg();
+    auto inst_len = 2;
 
-      if (mode.Encode() == 0b001) {  // OR
-        uint32_t value = region->read(offset);
-        value |= imm;
-        region->write_u32(offset, value);
+    if (modrm.GetMod() != ModRM::Mod::MOD_REG) {
+      auto r_m = modrm.GetRm();
 
-        pc += inst_len;                     // Skip instruction
-      } else if (mode.Encode() == 0b100) {  // AND
-        uint32_t value = region->read(offset);
-        value &= imm;
-        region->write_u32(offset, value);
-
-        pc += inst_len;  // Skip instruction
-      } else {
-        printf("Unhandled instruction: 83h with mod=0b00 and reg=0b%03b\n",
-               mode.Encode());
+      if (r_m.Encode() == 0b101) {
+        printf("Unhandled instruction: 8Bh with rm=0b101[rbp] (disp32)\n");
         goto fail;
       }
-
-      return;
-    }
-  } else if (code_buf[0] == 0x81) {
-    ModRM modrm(code_buf[1]);
-    if (modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
-      auto mode = modrm.GetReg();
-      auto rm = modrm.GetRm();
-
-      uint32_t imm = 0;
-      int code_len = 2;
-      if (rm.Encode() == 0b101) {
-        printf("Unhandled instruction: 81h with rm=0b101[rbp] (disp32)\n");
-      }
-      if (rm.Encode() == 0b100) {
-        SIB sib(code_buf[2]);
-        code_len += 1;
-
-        if (sib.Base().Encode() == 0b101) {
-          code_len += 4;
+      if (r_m.Encode() == 0b100) {
+        SIB sib(code_buf[inst_len]);
+        inst_len += 1;
+        if (sib.Base().Encode() == 0b101 and
+            modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
+          inst_len += 4;
         }
       }
-      imm = *reinterpret_cast<uint32_t*>(code_buf + code_len);
-      const auto inst_len = code_len + 4;
+    }
 
-      if (mode.Encode() == 0b001) {
-        uint32_t value = region->read(offset);
-        value |= imm;
-        region->write_u32(offset, value);
+    if (modrm.GetMod() == ModRM::Mod::MOD_DISP8) {
+      inst_len += 1;
+    } else if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
+      inst_len += 4;
+    }
 
-        pc += inst_len;  // Skip instruction
-        return;
-      } else if (mode.Encode() == 0b100) {  // AND
-        uint32_t value = region->read(offset);
-        value &= imm;
-        region->write_u32(offset, value);
+    uint8_t imm = code_buf[inst_len];
+    inst_len += 1;
 
-        pc += inst_len;  // Skip instruction
-        return;
+    uint32_t value = region->read(offset);
+    if (mode.Encode() == 0b001) {  // OR
+      value |= imm;
+    } else if (mode.Encode() == 0b100) {  // AND
+      value &= imm;
+    } else if (mode.Encode() == 0b110) {  // XOR
+      value ^= imm;
+    } else {
+      printf("Unhandled instruction: 83h with mod=0b00 and reg=0b%03b\n",
+             mode.Encode());
+      goto fail;
+    }
+
+    region->write_u32(offset, value);
+    pc += inst_len;  // Skip instruction
+    return;
+  }
+  if (code_buf[0] == 0x81) {
+    ModRM modrm(code_buf[1]);
+    int inst_len = 2;
+
+    if (modrm.GetMod() != ModRM::Mod::MOD_REG) {
+      auto r_m = modrm.GetRm();
+
+      if (r_m.Encode() == 0b101) {
+        printf("Unhandled instruction: 8Bh with rm=0b101[rbp] (disp32)\n");
+        goto fail;
       }
+      if (r_m.Encode() == 0b100) {
+        SIB sib(code_buf[inst_len]);
+        inst_len += 1;
+        if (sib.Base().Encode() == 0b101 and
+            modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
+          inst_len += 4;
+        }
+      }
+    }
+
+    if (modrm.GetMod() == ModRM::Mod::MOD_DISP8) {
+      inst_len += 1;
+    } else if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
+      inst_len += 4;
+    }
+
+    uint32_t imm = *reinterpret_cast<uint32_t*>(code_buf + inst_len);
+    inst_len += 4;
+
+    auto mode = modrm.GetReg();
+    uint32_t value = region->read(offset);
+
+    if (mode.Encode() == 0b001) {
+      value |= imm;
+    } else if (mode.Encode() == 0b100) {  // AND
+      value &= imm;
+    } else {
       printf("Unhandled instruction: 81h with mod=0b00 and reg=0b%03b\n",
              mode.Encode());
+      goto fail;
     }
-  } else if (code_buf[0] == 0x0F and code_buf[1] == 0xBA) {
+
+    region->write_u32(offset, value);
+
+    pc += inst_len;  // Skip instruction
+    return;
+  }
+  if (code_buf[0] == 0x0F and code_buf[1] == 0xBA) {
     size_t inst_len = 2;
 
     ModRM modrm(code_buf[inst_len]);
-    auto mode = modrm.GetReg();
-    auto rm = modrm.GetRm();
     inst_len++;
 
-    void* mem_addr = nullptr;
+    if (modrm.GetMod() != ModRM::Mod::MOD_REG) {
+      auto r_m = modrm.GetRm();
 
-    if (modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
-      SIB sib(code_buf[inst_len]);
-      inst_len++;
-
-      auto index =
-          sib.Index().Encode() == 0b100 ? 0 : sib.Index().Read(mcontext);
-      auto scale = 1 << static_cast<int>(sib.Scale());
-      uint32_t base = 0;
-      if (sib.Base().Encode() == 0b101) {
-        base |= code_buf[inst_len];
-        base |= static_cast<uint32_t>(code_buf[inst_len + 1]) << 8;
-        base |= static_cast<uint32_t>(code_buf[inst_len + 2]) << 16;
-        base |= static_cast<uint32_t>(code_buf[inst_len + 3]) << 24;
-        inst_len += 4;
-      } else {
-        base = sib.Base().Read(mcontext);
-      }
-      mem_addr = reinterpret_cast<void*>(base + index * scale);
-
-      uint8_t imm = code_buf[inst_len];
-      inst_len++;
-
-      if (rm.Encode() == 0b100) {
-        // BT
-        uint32_t value = region->read(offset);
-        bool bit = (value >> imm) & 1;
-        mcontext->gregs[kRegEFL] =
-            (mcontext->gregs[kRegEFL] & ~0x40) | (bit << 6);
-        pc += inst_len;  // Skip instruction
-        return;
-      } else {
-        printf("Unhandled instruction: 0FBAh with rm=0b%03b (mod=0b00)\n",
-               rm.Encode());
-      }
-    }
-  } else if (code_buf[0] == 0xf7) {
-    ModRM modrm(code_buf[1]);
-    if (modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
-      auto mode = modrm.GetReg();
-      auto rm = modrm.GetRm();
-      void* mem_addr = nullptr;
-      int code_len = 2;
-      if (rm.Encode() == 0b101) {
-        printf("Unhandled instruction: F7h with rm=0b101[rbp] (disp32)\n");
+      if (r_m.Encode() == 0b101) {
+        printf("Unhandled instruction: 8Bh with rm=0b101[rbp] (disp32)\n");
         goto fail;
       }
-      if (rm.Encode() == 0b100) {
-        SIB sib(code_buf[2]);
-        auto index =
-            sib.Index().Encode() == 0b100 ? 0 : sib.Index().Read(mcontext);
-        auto scale = 1 << static_cast<int>(sib.Scale());
-        uint32_t base = 0;
-        if (sib.Base().Encode() == 0b101) {
-          base |= code_buf[3];
-          base |= static_cast<uint32_t>(code_buf[4]) << 8;
-          base |= static_cast<uint32_t>(code_buf[5]) << 16;
-          base |= static_cast<uint32_t>(code_buf[6]) << 24;
-          code_len = 7;
-        } else {
-          base = sib.Base().Read(mcontext);
-          code_len = 3;
+      if (r_m.Encode() == 0b100) {
+        SIB sib(code_buf[inst_len]);
+        inst_len += 1;
+        if (sib.Base().Encode() == 0b101 and
+            modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
+          inst_len += 4;
         }
-        mem_addr = reinterpret_cast<void*>(base + index * scale);
-      } else {
-        mem_addr = reinterpret_cast<void*>(rm.Read(mcontext));
-        code_len = 2;
-      }
-
-      if (mode.Encode() == 0b000) {  // TEST r/m32, imm32
-        uint32_t imm = *reinterpret_cast<uint32_t*>(code_buf + code_len);
-        uint32_t value = region->read(offset);
-        uint32_t result = value & imm;
-
-        // OF = 0
-        // CF = 0
-        // SF, ZF, AF are set according to the result
-        mcontext->gregs[kRegEFL] = (mcontext->gregs[kRegEFL] & ~0xC7) |
-                                   ((result == 0) << 6) | ((result >> 31) << 7);
-
-        pc += code_len + 4;  // Skip instruction
-        return;
       }
     }
-  } else if (code_buf[0] == 0xc6) {
-    ModRM modrm(code_buf[1]);
-    size_t code_len = 2;
-    if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
-      if (modrm.GetRm().Encode() == 0b101) {
-        printf("Unhandled instruction: 81h with rm=0b101[rbp] (disp32)\n");
-      }
-      if (modrm.GetRm().Encode() == 0b100) {
-        SIB sib(code_buf[2]);
-        code_len += 1;  // sib
 
-        if (sib.Base().Encode() == 0b101) {
-          code_len += 4;  // base32
-        }
-      }
-      code_len += 4;  // disp32
+    if (modrm.GetMod() == ModRM::Mod::MOD_DISP8) {
+      inst_len += 1;
+    } else if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
+      inst_len += 4;
+    }
 
-      uint8_t imm = code_buf[code_len];
-      code_len += 1;  // imm8
+    uint8_t imm = code_buf[inst_len];
+    inst_len++;
 
-      region->write_u8(offset, imm);
-
-      printf("%016llx: ", pc);
-      for (int i = 0; i < 15; i++) {
-        auto value = reinterpret_cast<uint8_t*>(pc)[i];
-        printf("%02x", value);
-      }
-      printf("\n");
-      pc += code_len;  // Skip instruction
-      printf("%016llx: ", pc);
-      for (int i = 0; i < 15; i++) {
-        auto value = reinterpret_cast<uint8_t*>(pc)[i];
-        printf("%02x", value);
-      }
-      printf("\n");
+    auto mode = modrm.GetReg();
+    if (mode.Encode() == 0b100) {
+      // BT
+      uint32_t value = region->read(offset);
+      bool bit = (value >> imm) & 1;
+      mcontext->gregs[kRegEFL] =
+          (mcontext->gregs[kRegEFL] & ~0x40) | (bit << 6);
+      pc += inst_len;  // Skip instruction
       return;
     }
+    printf("Unhandled instruction: 0FBAh with rm=0b%03b (mod=0b00)\n",
+           mode.Encode());
+    goto fail;
+  }
+  if (code_buf[0] == 0xf7) {
+    ModRM modrm(code_buf[1]);
+    int inst_len = 2;
+
+    if (modrm.GetMod() != ModRM::Mod::MOD_REG) {
+      auto r_m = modrm.GetRm();
+
+      if (r_m.Encode() == 0b101) {
+        printf("Unhandled instruction: 8Bh with rm=0b101[rbp] (disp32)\n");
+        goto fail;
+      }
+      if (r_m.Encode() == 0b100) {
+        SIB sib(code_buf[inst_len]);
+        inst_len += 1;
+        if (sib.Base().Encode() == 0b101 and
+            modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
+          inst_len += 4;
+        }
+      }
+    }
+
+    if (modrm.GetMod() == ModRM::Mod::MOD_DISP8) {
+      inst_len += 1;
+    } else if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
+      inst_len += 4;
+    }
+
+    auto mode = modrm.GetReg();
+    if (mode.Encode() == 0b000) {  // TEST r/m32, imm32
+      uint32_t imm = *reinterpret_cast<uint32_t*>(code_buf + inst_len);
+      uint32_t value = region->read(offset);
+      uint32_t result = value & imm;
+
+      mcontext->gregs[kRegEFL] = (mcontext->gregs[kRegEFL] & ~0xC7) |
+                                 ((result == 0) << 6) | ((result >> 31) << 7);
+    } else {
+      printf("Unhandled instruction: F7h with mod=0b00 and reg=0b%03b\n",
+             mode.Encode());
+      goto fail;
+    }
+    pc += inst_len + 4;  // Skip instruction
+    return;
+  }
+  if (code_buf[0] == 0xc6) {
+    ModRM modrm(code_buf[1]);
+    size_t inst_len = 2;
+
+    if (modrm.GetMod() != ModRM::Mod::MOD_REG) {
+      auto r_m = modrm.GetRm();
+
+      if (r_m.Encode() == 0b101) {
+        printf("Unhandled instruction: 8Bh with rm=0b101[rbp] (disp32)\n");
+        goto fail;
+      }
+      if (r_m.Encode() == 0b100) {
+        SIB sib(code_buf[inst_len]);
+        inst_len += 1;
+        if (sib.Base().Encode() == 0b101 and
+            modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
+          inst_len += 4;
+        }
+      }
+    }
+
+    if (modrm.GetMod() == ModRM::Mod::MOD_DISP8) {
+      inst_len += 1;
+    } else if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
+      inst_len += 4;
+    }
+
+    uint8_t imm = code_buf[inst_len];
+    inst_len += 1;  // imm8
+
+    region->write_u8(offset, imm);
+
+    printf("%016llx: ", pc);
+    for (int i = 0; i < 15; i++) {
+      auto value = reinterpret_cast<uint8_t*>(pc)[i];
+      printf("%02x", value);
+    }
+    printf("\n");
+    pc += inst_len;  // Skip instruction
+    printf("%016llx: ", pc);
+    for (int i = 0; i < 15; i++) {
+      auto value = reinterpret_cast<uint8_t*>(pc)[i];
+      printf("%02x", value);
+    }
+    printf("\n");
+    return;
   }
 
 fail:
@@ -502,7 +486,7 @@ fail:
   printf("code: %016llx\n", pc);
   for (int i = 0; i < 15; i++) {
     auto value = code_buf[i];
-    printf("%02x ", value);
+    printf("%02x", value);
   }
   printf("\n");
 
