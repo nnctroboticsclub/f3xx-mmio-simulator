@@ -108,11 +108,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1776860000,
-        "narHash": "sha256-GNjVhkVMLqIDs11cedpQ4yw3UYldzlP+C5RmpClhk9c=",
+        "lastModified": 1776885480,
+        "narHash": "sha256-yfd5vFRj8ZiI9fvFzG+GMZB8P8QtPjVosgfSc/MsddY=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "f6e701f756f3ab1258dc103e3d0cf124cb6ff6e7",
+        "rev": "70ef39a2ae1d1ff9d84590b3b83b74eb2018bac3",
         "type": "github"
       },
       "original": {
@@ -132,7 +132,7 @@
         "rust-overlay": "rust-overlay"
       },
       "locked": {
-        "lastModified": 1776862027,
+        "lastModified": 1776862081,
         "narHash": "sha256-a9qK8e6gcVG8GsLmSu4ZRAj/kFgqYFnm4RnhzFbd8/8=",
         "path": "/home/syoch/ghq/github.com/syoch/libs-dev/libs/roboenv-nix",
         "type": "path"

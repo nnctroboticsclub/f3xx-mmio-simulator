@@ -56,8 +56,7 @@ static void handler(int sig, siginfo_t* si, void* platform) {
         "\x1b[1;31m======\x1b[m\n");
     printf("Memory access outside mapped regions: %p\n", address);
     printf("Signal handler finished\n");
-    while (1)
-      ;
+    abort();
   }
 
   auto offset = address_int - region->Start();
@@ -74,13 +73,23 @@ static void handler(int sig, siginfo_t* si, void* platform) {
   auto code_buf = reinterpret_cast<uint8_t*>(pc);
   if (code_buf[0] == 0x8B) {  // MOV Ev, Gv
     ModRM modrm(code_buf[1]);
+    size_t inst_len = 2;
     if (modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
       auto value = region->read(offset);
       auto reg = modrm.GetReg();
-      // auto rm = modrm.GetRm();
-      const auto inst_len = 2;
-      // printf("%s <-- [%s] (==> 0x%08x)\n", reg.ToString().c_str(),
-      //        rm.ToString().c_str(), value);
+      auto r_m = modrm.GetRm();
+
+      if (r_m.Encode() == 0b101) {
+        printf("Unhandled instruction: 8Bh with rm=0b101[rbp] (disp32)\n");
+        goto fail;
+      }
+      if (r_m.Encode() == 0b100) {
+        SIB sib(code_buf[2]);
+        inst_len += 1;
+        if (sib.Base().Encode() == 0b101) {
+          inst_len += 4;
+        }
+      }
 
       reg.Write(mcontext, value);
 
@@ -213,16 +222,23 @@ static void handler(int sig, siginfo_t* si, void* platform) {
     } else if (modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
       auto imm = *reinterpret_cast<uint32_t*>(code_buf + 2);
       auto rm = modrm.GetRm();
-      const auto inst_len = 6;
+      auto inst_len = 6;
 
-      // printf("[%s] <-- 0x%08x \n", rm.ToString().c_str(), imm);
+      if (rm.Encode() == 0b101) {
+        printf("Unhandled instruction: C7h with rm=0b101[rbp] (disp32)\n");
+        goto fail;
+      }
+      if (rm.Encode() == 0b100) {  // mod r/m takes sib
+        SIB sib(code_buf[2]);
+        inst_len += 1;
+        if (sib.Base().Encode() == 0b101) {  // sib takes disp32
+          inst_len += 4;
+        }
+      }
 
       region->write_u32(offset, imm);
 
       pc += inst_len;  // Skip instruction
-      // printf("SIGSEGV: %p <-- %08x\n", address, value);
-      // printf("SIGSEGV: PC: %llx (skiped %d Bytes)\n", pc, inst_len);
-      // printf("\x1b[2;32m--------\x1b[m MMIO Trap \x1b[2;32m--------\x1b[m\n");
       return;
     }
   } else if (code_buf[0] == 0x88) {  // mov rm <-- reg (8bit)
@@ -261,8 +277,8 @@ static void handler(int sig, siginfo_t* si, void* platform) {
       int code_len = 0;
       if (rm.Encode() == 0b101) {
         printf("Unhandled instruction: 83h with rm=0b101[rbp] (disp32)\n");
-      }
-      if (rm.Encode() == 0b100) {
+        goto fail;
+      } else if (rm.Encode() == 0b100) {
         SIB sib(code_buf[2]);
         auto index =
             sib.Index().Encode() == 0b100 ? 0 : sib.Index().Read(mcontext);
@@ -291,10 +307,17 @@ static void handler(int sig, siginfo_t* si, void* platform) {
         value |= imm;
         region->write_u32(offset, value);
 
+        pc += inst_len;                     // Skip instruction
+      } else if (mode.Encode() == 0b100) {  // AND
+        uint32_t value = region->read(offset);
+        value &= imm;
+        region->write_u32(offset, value);
+
         pc += inst_len;  // Skip instruction
       } else {
         printf("Unhandled instruction: 83h with mod=0b00 and reg=0b%03b\n",
                mode.Encode());
+        goto fail;
       }
 
       return;
@@ -304,7 +327,7 @@ static void handler(int sig, siginfo_t* si, void* platform) {
     if (modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
       auto mode = modrm.GetReg();
       auto rm = modrm.GetRm();
-      void* mem_addr = nullptr;
+
       uint32_t imm = 0;
       int code_len = 2;
       if (rm.Encode() == 0b101) {
@@ -313,22 +336,10 @@ static void handler(int sig, siginfo_t* si, void* platform) {
       if (rm.Encode() == 0b100) {
         SIB sib(code_buf[2]);
         code_len += 1;
-        auto index =
-            sib.Index().Encode() == 0b100 ? 0 : sib.Index().Read(mcontext);
-        auto scale = 1 << static_cast<int>(sib.Scale());
-        uint32_t base = 0;
+
         if (sib.Base().Encode() == 0b101) {
-          base |= code_buf[3];
-          base |= static_cast<uint32_t>(code_buf[4]) << 8;
-          base |= static_cast<uint32_t>(code_buf[5]) << 16;
-          base |= static_cast<uint32_t>(code_buf[6]) << 24;
           code_len += 4;
-        } else {
-          base = sib.Base().Read(mcontext);
         }
-        mem_addr = reinterpret_cast<void*>(base + index * scale);
-      } else {
-        mem_addr = reinterpret_cast<void*>(rm.Read(mcontext));
       }
       imm = *reinterpret_cast<uint32_t*>(code_buf + code_len);
       const auto inst_len = code_len + 4;
@@ -396,31 +407,107 @@ static void handler(int sig, siginfo_t* si, void* platform) {
                rm.Encode());
       }
     }
+  } else if (code_buf[0] == 0xf7) {
+    ModRM modrm(code_buf[1]);
+    if (modrm.GetMod() == ModRM::Mod::MOD_NO_DISP) {
+      auto mode = modrm.GetReg();
+      auto rm = modrm.GetRm();
+      void* mem_addr = nullptr;
+      int code_len = 2;
+      if (rm.Encode() == 0b101) {
+        printf("Unhandled instruction: F7h with rm=0b101[rbp] (disp32)\n");
+        goto fail;
+      }
+      if (rm.Encode() == 0b100) {
+        SIB sib(code_buf[2]);
+        auto index =
+            sib.Index().Encode() == 0b100 ? 0 : sib.Index().Read(mcontext);
+        auto scale = 1 << static_cast<int>(sib.Scale());
+        uint32_t base = 0;
+        if (sib.Base().Encode() == 0b101) {
+          base |= code_buf[3];
+          base |= static_cast<uint32_t>(code_buf[4]) << 8;
+          base |= static_cast<uint32_t>(code_buf[5]) << 16;
+          base |= static_cast<uint32_t>(code_buf[6]) << 24;
+          code_len = 7;
+        } else {
+          base = sib.Base().Read(mcontext);
+          code_len = 3;
+        }
+        mem_addr = reinterpret_cast<void*>(base + index * scale);
+      } else {
+        mem_addr = reinterpret_cast<void*>(rm.Read(mcontext));
+        code_len = 2;
+      }
+
+      if (mode.Encode() == 0b000) {  // TEST r/m32, imm32
+        uint32_t imm = *reinterpret_cast<uint32_t*>(code_buf + code_len);
+        uint32_t value = region->read(offset);
+        uint32_t result = value & imm;
+
+        // OF = 0
+        // CF = 0
+        // SF, ZF, AF are set according to the result
+        mcontext->gregs[kRegEFL] = (mcontext->gregs[kRegEFL] & ~0xC7) |
+                                   ((result == 0) << 6) | ((result >> 31) << 7);
+
+        pc += code_len + 4;  // Skip instruction
+        return;
+      }
+    }
+  } else if (code_buf[0] == 0xc6) {
+    ModRM modrm(code_buf[1]);
+    size_t code_len = 2;
+    if (modrm.GetMod() == ModRM::Mod::MOD_DISP32) {
+      if (modrm.GetRm().Encode() == 0b101) {
+        printf("Unhandled instruction: 81h with rm=0b101[rbp] (disp32)\n");
+      }
+      if (modrm.GetRm().Encode() == 0b100) {
+        SIB sib(code_buf[2]);
+        code_len += 1;  // sib
+
+        if (sib.Base().Encode() == 0b101) {
+          code_len += 4;  // base32
+        }
+      }
+      code_len += 4;  // disp32
+
+      uint8_t imm = code_buf[code_len];
+      code_len += 1;  // imm8
+
+      region->write_u8(offset, imm);
+
+      printf("%016llx: ", pc);
+      for (int i = 0; i < 15; i++) {
+        auto value = reinterpret_cast<uint8_t*>(pc)[i];
+        printf("%02x", value);
+      }
+      printf("\n");
+      pc += code_len;  // Skip instruction
+      printf("%016llx: ", pc);
+      for (int i = 0; i < 15; i++) {
+        auto value = reinterpret_cast<uint8_t*>(pc)[i];
+        printf("%02x", value);
+      }
+      printf("\n");
+      return;
+    }
   }
 
+fail:
   printf(
       "\x1b[1;31m======\x1b[m Unhandled instruction "
       "\x1b[1;31m======\x1b[m\n");
   printf("Attempting to access %p failed\n", address);
   printf("code: %016llx\n", pc);
-  for (int j = 0; j <= 15; j++) {
-    for (int i = 0; i < 16; i++) {
-      auto value = code_buf[j * 16 + i];
-      printf("%02x ", value);
-    }
-    printf("\n");
+  for (int i = 0; i < 15; i++) {
+    auto value = code_buf[i];
+    printf("%02x ", value);
   }
+  printf("\n");
 
   printf("Signal handler finished\n");
-  while (1)
-    ;
-}
-
-static void abort_handler(int sig, siginfo_t* si, void* platform) {
-  while (true) {
-    // sleep 2s
-    sleep(2);
-  }
+  abort();
 }
 
 class Emulator {
@@ -436,21 +523,9 @@ class Emulator {
       exit(EXIT_FAILURE);
     }
 
-    sa.sa_flags = SA_SIGINFO | SA_NODEFER;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_sigaction = abort_handler;
-    if (sigaction(SIGABRT, &sa, NULL) == -1) {
-      printf("Registering SIGSEGV handler failed\n");
-      exit(EXIT_FAILURE);
-    }
-
     mmap(reinterpret_cast<void*>(0xABCD0000), 0x10000, PROT_READ | PROT_WRITE,
          MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     mcu_emulator::hardware::gEmuBridge.Init();
-
-    static mcu_emulator::hardware::Emu emu;
-    emu.network.MakeTestPacketDump();
-    emu.network.Connect("emu.sock");
 
     using mcu_emulator::mmio::ADCRegion;
     using mcu_emulator::mmio::CANRegion;
@@ -464,16 +539,16 @@ class Emulator {
     using mcu_emulator::mmio::USARTRegion;
 
     regions.push_back(std::make_shared<SCBRegion>(0xE000ED00));
-    regions.push_back(std::make_shared<NVICRegion>(emu, 0xE000E100));
-    regions.push_back(std::make_shared<RCCRegion>(emu));
+    regions.push_back(std::make_shared<NVICRegion>(emu_, 0xE000E100));
+    regions.push_back(std::make_shared<RCCRegion>(emu_));
     regions.push_back(std::make_shared<GPIORegion<0>>());
     regions.push_back(std::make_shared<GPIORegion<1>>());
     regions.push_back(std::make_shared<GPIORegion<2>>());
     regions.push_back(std::make_shared<GPIORegion<3>>());
     regions.push_back(std::make_shared<GPIORegion<5>>());
-    regions.push_back(std::make_shared<USARTRegion<1>>(emu, 0x40013800));
-    regions.push_back(std::make_shared<USARTRegion<2>>(emu, 0x40004400));
-    regions.push_back(std::make_shared<USARTRegion<3>>(emu, 0x40004800));
+    regions.push_back(std::make_shared<USARTRegion<1>>(emu_, 0x40013800));
+    regions.push_back(std::make_shared<USARTRegion<2>>(emu_, 0x40004400));
+    regions.push_back(std::make_shared<USARTRegion<3>>(emu_, 0x40004800));
     regions.push_back(std::make_shared<CANRegion<0>>(0x40006400));
     regions.push_back(std::make_shared<DMARegion>(0x40020000));
     regions.push_back(std::make_shared<ADCRegion<1>>(0x50000000));
@@ -481,7 +556,7 @@ class Emulator {
     // regions.push_back(std::make_shared<TIMRegion<1>>(0x40012C00));
     // regions.push_back(std::make_shared<TIMRegion<2>>(0x40000000));
     // regions.push_back(std::make_shared<TIMRegion<3>>(0x40000400));
-    regions.push_back(std::make_shared<TIMRegion<6>>(emu, 0x40001000));
+    regions.push_back(std::make_shared<TIMRegion<6>>(emu_, 0x40001000));
     // regions.push_back(std::make_shared<TIMRegion<7>>(0x40001400));
     // regions.push_back(std::make_shared<TIMRegion<15>>(0x40014000));
     // regions.push_back(std::make_shared<TIMRegion<16>>(0x40014400));
@@ -491,7 +566,12 @@ class Emulator {
     for (auto& region : regions) {
       region->reset();
     }
+
+    emu_.network.Connect("emu.sock");
   }
+
+ private:
+  mcu_emulator::hardware::Emu emu_;
 };
 
 extern "C" void InitRCC();

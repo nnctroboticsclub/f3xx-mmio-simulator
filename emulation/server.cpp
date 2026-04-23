@@ -94,24 +94,25 @@ class EmulationServer {
 static EmulationServer server;
 int main() {
   server.Listen("emu.sock");
+  if (false) {
+    std::thread([&]() {
+      auto marker = mcu_emulator::EndpointMarker{
+          .kind = mcu_emulator::EndpointMarker::Kind::kUART,
+          .id = 1,
+      };
 
-  std::thread([&]() {
-    auto marker = mcu_emulator::EndpointMarker{
-        .kind = mcu_emulator::EndpointMarker::Kind::kUART,
-        .id = 1,
-    };
-
-    sleep(10);
-    server.BroadcastMessage(
-        mcu_emulator::DataMessage{marker, "Hello, world!\n"});
-    sleep(1);
-    server.BroadcastMessage(mcu_emulator::DataMessage{marker, "0123\n"});
-    sleep(1);
-    server.BroadcastMessage(mcu_emulator::DataMessage{marker, "ABCD\n"});
-    sleep(1);
-    server.BroadcastMessage(mcu_emulator::DataMessage{marker, "01230123\n"});
-    sleep(1);
-  }).detach();
+      sleep(2);
+      server.BroadcastMessage(
+          mcu_emulator::DataMessage{marker, "Hello, world!\n"});
+      sleep(1);
+      server.BroadcastMessage(mcu_emulator::DataMessage{marker, "0123\n"});
+      sleep(1);
+      server.BroadcastMessage(mcu_emulator::DataMessage{marker, "ABCD\n"});
+      sleep(1);
+      server.BroadcastMessage(mcu_emulator::DataMessage{marker, "01230123\n"});
+      sleep(1);
+    }).detach();
+  }
 
   server.Loop();
 

@@ -33,6 +33,10 @@ class CanDebug {
 
   void UpdateScreen() {
     for (auto&& pair : messages_) {
+      if (!pair.is_valid) {
+        continue;
+      }
+
       auto id = pair.key;
       auto& data = pair.value;
 

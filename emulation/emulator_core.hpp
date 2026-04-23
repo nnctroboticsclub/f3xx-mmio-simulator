@@ -3,11 +3,12 @@
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <algorithm>
 #include <cereal/archives/portable_binary.hpp>
 #include <cereal/cereal.hpp>
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
+
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -67,40 +68,45 @@ struct DataMessage {
 };
 
 class EmulationNetwork {
+  auto ReceiveExactly(uint8_t* buffer, size_t length) -> size_t {
+    ssize_t ret = 0;
+    auto remaining = sizeof(uint16_t);
+    auto* ptr = buffer;
+    while (remaining > 0) {
+      auto bytes_to_receive = std::min(static_cast<size_t>(remaining), length);
+      ret = recv(socket_fd_, ptr, bytes_to_receive, 0);
+      printf("Trace: recv(%d, %p, %zu) = %zd\n", socket_fd_, ptr,
+             bytes_to_receive, ret);
+      if (ret <= 0) {
+        printf("Error: %zd, errno:%d, fd: %d, this:%p\n", ret, errno,
+               socket_fd_, this);
+        return 0;
+      }
+      remaining -= ret;
+      ptr += ret;
+    }
+    return ptr - buffer;
+  }
   auto RxThread() {
-    static char buf[1024];
+    static uint8_t buf[1024];
 
     while (true) {
-      // receive 2byte length
-      auto ret = recv(socket_fd_, buf, sizeof(uint16_t), 0);
-      if (ret < 0) {
-        throw std::runtime_error("Failed to receive data");
-      }
-      if (ret != sizeof(uint16_t)) {
-        throw std::runtime_error("Invalid data length");
+      if (ReceiveExactly(buf, sizeof(uint16_t)) == 0) {
+        printf("Failed to receive message length, Exiting...\n");
+        break;
       }
       uint16_t length = *reinterpret_cast<uint16_t*>(buf);
       if (length > sizeof(buf)) {
         throw std::runtime_error("Data length exceeds buffer size");
       }
 
-      // receive data
-      auto remaining = length;
-      auto ptr = buf;
-      while (remaining > 0) {
-        auto bytes_to_receive = std::min(size_t(remaining), sizeof(buf));
-        ret = recv(socket_fd_, ptr, bytes_to_receive, 0);
-        if (ret < 0) {
-          printf("Error: %zd, errno:%d, fd: %d, this:%p\n", ret, errno,
-                 socket_fd_, this);
-          throw std::runtime_error("Failed to receive data");
-        }
-        remaining -= ret;
-        ptr += ret;
+      if (ReceiveExactly(buf, length) == 0) {
+        printf("Failed to receive message data, Exiting...\n");
+        break;
       }
 
       // Deserialize the data
-      std::stringstream ss(std::string(buf, length));
+      std::stringstream ss(std::string((char*)buf, length));
       cereal::PortableBinaryInputArchive archive(ss);
       DataMessage message;
       archive(message);
@@ -111,6 +117,9 @@ class EmulationNetwork {
         it->second(message);
         continue;
       }
+
+      printf("DEBUG: Message received with marker: %02x, length: %zu\n",
+             message.marker, message.data.size());
 
       // Fallback to default callback if registered
       if (fallback_callback_) {

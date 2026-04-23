@@ -58,6 +58,8 @@ class CANRegion : public MMIORegion {
   uint32_t read(uint32_t offset) final {
     auto value = *reinterpret_cast<uint32_t*>(
         reinterpret_cast<uint8_t*>(&can_) + offset);
+    if (offset == 4)
+      return value;
     printf("CAN%d: *%08x == %08x\n", index, offset, value);
     return value;
   }
@@ -69,18 +71,21 @@ class CANRegion : public MMIORegion {
         can_.MCR &= ~0x8000;  // Clear Master Reset
         return;
       }
-      if (can_.MCR & ~0x0001 and value & 0x0001) {  // Initalization request
+      if (!(can_.MCR & 0x0001) and value & 0x0001) {  // Initalization request
         printf("CAN%d: Enter Initialization request\n", index);
         can_.MCR |= 0x0001;
         can_.MSR |= (1 << 0);  // Init ACK
         return;
       }
-      if (can_.MCR & 0x0001 and value & ~0x0001) {  // Laeve Init Mode
+      if (can_.MCR & 0x0001 and !(value & 0x0001)) {  // Leave Init Mode
         printf("CAN%d: Leave initialization request\n", index);
         can_.MCR &= ~0x0001;
         can_.MSR &= ~(1 << 0);  // Init ACK
         return;
       }
+      printf("CAN%d: MCR: %08x -> %08x\n", index, can_.MCR, value);
+      can_.MCR = value;
+      return;
     }
 
     // range check

@@ -26,6 +26,8 @@ class RCCRegion : public MMIORegion {
       auto changed_fields = emu_.rcc.regs.CR ^ value;
 
       if (changed_fields & 0x01000000) {  // PLL ON
+        printf("RCC: CR PLLON changed: %d -> %d\n",
+               (emu_.rcc.regs.CR & 0x01000000) != 0, (value & 0x01000000) != 0);
         changed_fields &= ~0x01000000;
         emu_.rcc.regs.CR =
             (emu_.rcc.regs.CR & ~0x01000000) | (value & 0x01000000);
@@ -35,6 +37,9 @@ class RCCRegion : public MMIORegion {
         } else {
           emu_.rcc.regs.CR &= ~0x02000000;  // PLL not ready
         }
+
+        printf("RCC: CR PLLRDY is now %d\n",
+               (emu_.rcc.regs.CR & 0x02000000) != 0);
       }
 
       if (changed_fields == 0) {
@@ -56,6 +61,11 @@ class RCCRegion : public MMIORegion {
         auto sw = (value & (3 << 0));
         emu_.rcc.regs.CFGR = (emu_.rcc.regs.CFGR & ~(3 << 0)) | (sw << 0);
         emu_.rcc.regs.CFGR = (emu_.rcc.regs.CFGR & ~(3 << 2)) | (sw << 2);
+        printf(
+            "RCC: CFGR System Clock Switch changed: %d -> %d, after modified "
+            "RCC->CFGR = %08x\n",
+            (emu_.rcc.regs.CFGR & (3 << 0)) >> 0, (value & (3 << 0)) >> 0,
+            emu_.rcc.regs.CFGR);
       }
 
       if (changed_fields & (15 << 4)) {  // HPRE
