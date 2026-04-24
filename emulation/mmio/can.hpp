@@ -60,6 +60,16 @@ class CANRegion : public MMIORegion {
         reinterpret_cast<uint8_t*>(&can_) + offset);
     if (offset == 4)
       return value;
+    if (offset == 0x18)
+      return value;
+    if (offset == 0x188)
+      return value;
+    if (offset == 0x18C)
+      return value;
+    if (offset == 0x1A8)
+      return value;
+    if (offset == 0x1AC)
+      return value;
     printf("CAN%d: *%08x == %08x\n", index, offset, value);
     return value;
   }

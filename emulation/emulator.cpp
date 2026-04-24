@@ -29,10 +29,12 @@
 #include "mmio/timer.hpp"
 #include "mmio/usart.hpp"
 
+namespace {
 using MMIORegions =
     std::vector<std::shared_ptr<mcu_emulator::mmio::MMIORegion>>;
 
 MMIORegions regions;
+
 auto LookupRegion(uint32_t address)
     -> std::shared_ptr<mcu_emulator::mmio::MMIORegion> {
   for (auto& r : regions) {
@@ -41,6 +43,17 @@ auto LookupRegion(uint32_t address)
     }
   }
   return nullptr;
+}
+
+[[noreturn]] void ReraiseAsNativeSegfault(int sig) {
+  struct sigaction default_action{};
+  default_action.sa_handler = SIG_DFL;
+  sigemptyset(&default_action.sa_mask);
+  default_action.sa_flags = 0;
+  sigaction(sig, &default_action, nullptr);
+  (void)raise(sig);
+
+  _exit(128 + sig);
 }
 
 static void handler(int sig, siginfo_t* si, void* platform) {
@@ -55,8 +68,8 @@ static void handler(int sig, siginfo_t* si, void* platform) {
         "\x1b[1;31m======\x1b[m Segmentation Fault. "
         "\x1b[1;31m======\x1b[m\n");
     printf("Memory access outside mapped regions: %p\n", address);
-    printf("Signal handler finished\n");
-    abort();
+    printf("Forwarding to native SIGSEGV handler\n");
+    ReraiseAsNativeSegfault(sig);
   }
 
   auto offset = address_int - region->Start();
@@ -85,7 +98,6 @@ static void handler(int sig, siginfo_t* si, void* platform) {
     ModRM modrm(code_buf[1]);
     size_t inst_len = 2;
     auto value = region->read(offset);
-    auto reg = modrm.GetReg();
 
     if (modrm.GetMod() != ModRM::Mod::MOD_REG) {
       auto r_m = modrm.GetRm();
@@ -110,7 +122,7 @@ static void handler(int sig, siginfo_t* si, void* platform) {
       inst_len += 4;
     }
 
-    reg.Write(mcontext, value);
+    modrm.GetReg().Write(mcontext, value);
     pc += inst_len;  // Skip instruction
     return;
   }
@@ -462,19 +474,8 @@ static void handler(int sig, siginfo_t* si, void* platform) {
 
     region->write_u8(offset, imm);
 
-    printf("%016llx: ", pc);
-    for (int i = 0; i < 15; i++) {
-      auto value = reinterpret_cast<uint8_t*>(pc)[i];
-      printf("%02x", value);
-    }
-    printf("\n");
     pc += inst_len;  // Skip instruction
     printf("%016llx: ", pc);
-    for (int i = 0; i < 15; i++) {
-      auto value = reinterpret_cast<uint8_t*>(pc)[i];
-      printf("%02x", value);
-    }
-    printf("\n");
     return;
   }
 
@@ -493,6 +494,7 @@ fail:
   printf("Signal handler finished\n");
   abort();
 }
+}  // namespace
 
 class Emulator {
  public:
