@@ -2,39 +2,44 @@
 
 #include <sys/ucontext.h>
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
 namespace mcu_emulator::machine_code {
-class Reg {
-  enum class RegId {
-    AX = 0b000,
-    CX = 0b001,
-    DX = 0b010,
-    BX = 0b011,
-    SP = 0b100,
-    BP = 0b101,
-    SI = 0b110,
-    DI = 0b111
-  };
+enum class RegId : uint8_t {
+  AX = 0b000,
+  CX = 0b001,
+  DX = 0b010,
+  BX = 0b011,
+  SP = 0b100,
+  BP = 0b101,
+  SI = 0b110,
+  DI = 0b111
+};
 
-  Reg(RegId id) : id_(id) {}
+// NOLINTNEXTLINE
+static const char* kRegNames[] = {"ax", "cx", "dx", "bx",
+                                  "sp", "bp", "si", "di"};
+
+const auto kRegCount = sizeof(kRegNames) / sizeof(kRegNames[0]);
+
+class Reg {
+  explicit Reg(RegId reg_id) : id_(reg_id) {}
 
  public:
-  operator std::string() {
-    static const char* strings[] = {"ax", "cx", "dx", "bx",
-                                    "sp", "bp", "si", "di"};
-
+  explicit operator std::string() {
     if (id_ < RegId::AX || id_ > RegId::DI) {
-      return "??";
+      return "??";  // NOLINT
     }
-    return std::string() + "\x1b[1;34m" + strings[static_cast<int>(id_)] +
+    // NOLINTNEXTLINE
+    return std::string() + "\x1b[1;34m" + kRegNames[static_cast<int>(id_)] +
            "\x1b[m";
   }
 
-  std::string ToString() { return std::string(*this); }
+  auto ToString() -> std::string { return std::string(*this); }
 
-  size_t Index() {
+  auto Index() -> size_t {
     switch (id_) {
       case RegId::AX:
         return REG_RAX;
@@ -68,9 +73,9 @@ class Reg {
     }
   }
 
-  size_t Encode() { return static_cast<size_t>(id_); }
+  auto Encode() -> size_t { return static_cast<size_t>(id_); }
 
-  void Write(mcontext_t* mcontext, uint64_t value) {
+  void Write(mcontext_t* mcontext, int64_t value) {
     auto index = Index();
     if (index != -1) {
       mcontext->gregs[index] = value;
@@ -79,19 +84,18 @@ class Reg {
     }
   }
 
-  uint64_t Read(mcontext_t* mcontext) {
+  auto Read(mcontext_t* mcontext) -> int64_t {
     auto index = Index();
-    if (index != -1) {
-      return mcontext->gregs[index];
-    } else {
+    if (index == -1) {
       printf("Invalid register index\n");
       return 0;
     }
+
+    return mcontext->gregs[index];
   }
 
- public:
-  static std::optional<Reg> FromIndex(int index) {
-    if (index < 0 || index > 7) {
+  static auto FromIndex(int index) -> std::optional<Reg> {
+    if (index < 0 || index >= kRegCount) {
       return std::nullopt;
     }
 
@@ -99,14 +103,14 @@ class Reg {
     return Reg(reg_id);
   }
 
-  static Reg AX() { return Reg(RegId::AX); }
-  static Reg CX() { return Reg(RegId::CX); }
-  static Reg DX() { return Reg(RegId::DX); }
-  static Reg BX() { return Reg(RegId::BX); }
-  static Reg SP() { return Reg(RegId::SP); }
-  static Reg BP() { return Reg(RegId::BP); }
-  static Reg SI() { return Reg(RegId::SI); }
-  static Reg DI() { return Reg(RegId::DI); }
+  static auto AX() -> Reg { return Reg{RegId::AX}; }
+  static auto CX() -> Reg { return Reg{RegId::CX}; }
+  static auto DX() -> Reg { return Reg{RegId::DX}; }
+  static auto BX() -> Reg { return Reg{RegId::BX}; }
+  static auto SP() -> Reg { return Reg{RegId::SP}; }
+  static auto BP() -> Reg { return Reg{RegId::BP}; }
+  static auto SI() -> Reg { return Reg{RegId::SI}; }
+  static auto DI() -> Reg { return Reg{RegId::DI}; }
 
  private:
   RegId id_;

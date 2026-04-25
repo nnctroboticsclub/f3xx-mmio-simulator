@@ -75,22 +75,19 @@ class CANRegion : public MMIORegion {
   }
 
   void write_u32(uint32_t offset, uint32_t value) final {
-    if (offset == 0x00) {    // MCR Access
-      if (value & 0x8000) {  // Master Reset
-        printf("CAN%d: Master Reset\n", index);
+    if (offset == 0x00) {     // MCR Access
+      if (value & 0x8000) {   // Master Reset
         can_.MCR &= ~0x8000;  // Clear Master Reset
         return;
       }
-      if (!(can_.MCR & 0x0001) and value & 0x0001) {  // Initalization request
-        printf("CAN%d: Enter Initialization request\n", index);
+      if (!(can_.MCR & 0x0001) and value & 0x0001) {  // Initialization request
         can_.MCR |= 0x0001;
-        can_.MSR |= (1 << 0);  // Init ACK
+        can_.MSR |= (1U << 0U);  // Init ACK
         return;
       }
       if (can_.MCR & 0x0001 and !(value & 0x0001)) {  // Leave Init Mode
-        printf("CAN%d: Leave initialization request\n", index);
         can_.MCR &= ~0x0001;
-        can_.MSR &= ~(1 << 0);  // Init ACK
+        can_.MSR &= ~(1U << 0U);  // Init ACK
         return;
       }
       printf("CAN%d: MCR: %08x -> %08x\n", index, can_.MCR, value);

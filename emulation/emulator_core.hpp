@@ -168,39 +168,6 @@ class EmulationNetwork {
     Connect(client);
   }
 
-  auto MakeTestPacketDump() {
-    DataMessage msg{{
-                        .kind = EndpointMarker::kUART,
-                        .id = 0x01,
-                    },
-                    "\x01\x02\x03\x04"};
-    std::stringstream ss;
-    {
-      using Ar = cereal::PortableBinaryOutputArchive;
-      auto archive = Ar(ss);
-      archive(msg);
-    }
-
-    auto data = ss.str();
-    uint16_t length = data.size();
-    std::string packet;
-    packet.resize(sizeof(uint16_t) + length);
-    memcpy(packet.data(), &length, sizeof(uint16_t));
-    memcpy(packet.data() + sizeof(uint16_t), data.data(), length);
-
-    printf("Packet: ");
-    for (const auto& byte : packet) {
-      printf("%02x ", byte);
-    }
-    printf("\n");
-
-    std::ofstream file("dump.bin", std::ios::binary);
-    file.write(packet.data(), packet.size());
-    file.close();
-
-    printf("Packet written to packet.bin\n");
-  }
-
   auto SendMessage(EndpointMarker marker, std::vector<uint8_t> const& data) {
     if (not is_connected) {
       throw std::runtime_error("Not connected");
