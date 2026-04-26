@@ -167,8 +167,11 @@ class Emulator {
 extern "C" void InitRCC();
 extern "C" void InitVector();
 
+#include "f3xx-mmio-simulator.h"
+
 __attribute__((constructor)) void InitEmulator() {
-  static Emulator emulator;
+  // static Emulator emulator;
+  init_mmio_simulator();
 
   InitRCC();
   InitVector();

@@ -1,0 +1,23 @@
+[package]
+name = "f3xx-mmio-simulator"
+version = "1.0.0"
+authors = ["syoch <syoch64@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+cxx = "1.0"
+
+[dependencies.nix]
+version = "0.31.2"
+features = ["signal"]
+
+[dependencies.iced-x86]
+version = "1.21.0"
+default-features = false
+features = ["std", "decoder", "gas", "instr_info"]
+
+[build-dependencies]
+cxx-build = "1.0"
+
+[lib]
+crate-type = ["staticlib"]

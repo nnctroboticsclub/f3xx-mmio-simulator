@@ -73,7 +73,17 @@
         extraBuildInputs = pkgs: [
           pkgs.lldb
           pkgs.zydis
+
+          pkgs.cargo
+          pkgs.rust-analyzer
+          pkgs.pkg-config
+          pkgs.udev
+          pkgs.rustfmt
+          pkgs.rustc
+          pkgs.clippy
         ];
+
+        env.RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
 
         cmakeInputs = [
           rpkgs.roboenv-loader

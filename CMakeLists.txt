@@ -19,6 +19,7 @@ add_compile_options(-ffunction-sections -fdata-sections)
 add_link_options(-Wl,--gc-sections)
 
 add_subdirectory(emulation)
+add_subdirectory(simulator)
 add_subdirectory(CANMonitor)
 
 if (FALSE)
