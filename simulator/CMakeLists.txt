@@ -17,8 +17,10 @@ endif()
 set(RUST_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 set(F3XX_MMIO_SIMULATOR_INC "${CMAKE_CURRENT_BINARY_DIR}/include")
 set(F3XX_MMIO_SIMULATOR_LIB "${RUST_TARGET_DIR}/${TARGET_DIR}/libf3xx_mmio_simulator.a")
-
 set(F3XX_MMIO_SIMULATOR_CXX "${RUST_TARGET_DIR}/f3xx-mmio-simulator.cpp")
+
+FILE(GLOB_RECURSE F3XX_MMIO_SIMULATOR_RS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.rs")
+
 add_library(f3xx-mmio-simulator-rs STATIC ${F3XX_MMIO_SIMULATOR_CXX})
 add_custom_command(
     OUTPUT ${F3XX_MMIO_SIMULATOR_CXX} ${F3XX_MMIO_SIMULATOR_LIB}
@@ -27,7 +29,7 @@ add_custom_command(
     COMMAND mkdir -p ${F3XX_MMIO_SIMULATOR_INC}
     COMMAND cp ${RUST_TARGET_DIR}/cxxbridge/f3xx-mmio-simulator/src/lib.rs.h ${F3XX_MMIO_SIMULATOR_INC}/f3xx-mmio-simulator.h
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    DEPENDS src/lib.rs
+    DEPENDS ${F3XX_MMIO_SIMULATOR_RS}
 
 )
 

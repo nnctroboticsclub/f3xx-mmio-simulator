@@ -194,11 +194,13 @@ impl MmioHandler for RCCRegion {
                 reg |= self.get_sysclk_source();
                 reg
             }
+            0x14 | 0x18 | 0x1C => self.mem[offset / 4],
+            0x18 => self.mem[6], // APB2 ENR
+            0x1C => self.mem[7], // APB1 ENR
             _ => {
                 panic!("Read from undefined RCC region at address {:08x}", address);
             }
         };
-        println!("R {address:08x} --> {value:08x}");
         value
     }
     fn write(&mut self, address: usize, value: u32) {
@@ -208,8 +210,6 @@ impl MmioHandler for RCCRegion {
         let new_value = value;
 
         let mut changed_bits = original_value ^ new_value;
-
-        println!("W {address:08x} <-- {value:08x}");
 
         if offset == 0x00 {
             changed_bits &= 0x02040003; // CR ignores PLLON/HSRON/CSSON
@@ -252,6 +252,9 @@ impl MmioHandler for RCCRegion {
                     original_value, new_value
                 );
             }
+        } else if offset == 0x14 || offset == 0x18 || offset == 0x1C {
+            // AHB ENR, APB2 ENR, APB1 ENR
+            // We can ignore this since we don't simulate individual peripherals
         } else {
             panic!(
                 "Write to undefined RCC region at address {:08x} with value {:08x}",
