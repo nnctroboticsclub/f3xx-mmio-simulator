@@ -1,4 +1,4 @@
-use crate::mmio_handler::MmioHandler;
+use super::MmioHandler;
 
 const NVIC_REGION_SIZE: usize = 0x400;
 

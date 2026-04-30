@@ -1,4 +1,4 @@
-use crate::mmio_handler::MmioHandler;
+use super::MmioHandler;
 
 const FLASH_REGION_SIZE: usize = 0x24;
 pub struct FlashRegion {

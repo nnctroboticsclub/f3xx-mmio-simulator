@@ -3,7 +3,7 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 
-use crate::mmio_handler::DynMMIOHandler;
+use super::DynMMIOHandler;
 
 #[derive(Debug)]
 pub struct Simulator {

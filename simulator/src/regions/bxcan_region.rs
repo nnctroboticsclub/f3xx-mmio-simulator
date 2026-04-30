@@ -1,4 +1,4 @@
-use crate::mmio_handler::MmioHandler;
+use super::MmioHandler;
 
 const BXCAN_REGION_SIZE: usize = 0x2B0;
 

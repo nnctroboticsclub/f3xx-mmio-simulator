@@ -1,4 +1,4 @@
-use crate::mmio_handler::MmioHandler;
+use super::MmioHandler;
 
 struct MemHandler {
     mem: Vec<u8>,

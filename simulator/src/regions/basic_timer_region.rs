@@ -1,4 +1,4 @@
-use crate::mmio_handler::MmioHandler;
+use super::MmioHandler;
 
 const BASIC_TIMER_REGION_SIZE: usize = 0x30;
 

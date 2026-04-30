@@ -1,6 +1,6 @@
-use crate::mmio_handler::MmioHandler;
+use super::MmioHandler;
 
-struct NotImplementedHandler {
+pub struct NotImplementedHandler {
     start_addr: usize,
     end_addr: usize,
 }

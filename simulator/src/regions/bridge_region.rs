@@ -1,4 +1,5 @@
-use crate::{mmio_handler::MmioHandler, vector_table::VectorTable};
+use super::MmioHandler;
+use crate::vector_table::VectorTable;
 
 pub struct BridgeRegion {
     start_addr: usize,

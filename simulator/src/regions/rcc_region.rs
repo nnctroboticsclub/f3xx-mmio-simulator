@@ -1,4 +1,4 @@
-use crate::mmio_handler::MmioHandler;
+use super::MmioHandler;
 
 const RCC_REGION_SIZE: usize = 0x24;
 const RCC_HSI_CLOCK: u32 = 8_000_000;

@@ -1,7 +1,7 @@
 use iced_x86::{Instruction, OpKind, Register};
 use nix::libc::{self, mcontext_t};
 
-use crate::mmio_handler::DynMMIOHandler;
+use super::DynMMIOHandler;
 
 pub fn iced_register_to_libc_reg(reg: Register) -> Option<libc::c_int> {
     match reg {

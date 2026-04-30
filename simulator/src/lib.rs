@@ -3,35 +3,24 @@ use std::{cell::RefCell, sync::Mutex};
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
 
 use crate::{
-    basic_timer_region::BasicTimerRegion,
-    bridge_region::BridgeRegion,
-    bxcan_region::BXCanRegion,
-    flash_region::FlashRegion,
-    gpio_region::{GPIOPort, GPIORegion},
-    mmio_handler::DynMMIOHandler,
-    nvic_region::NVICRegion,
-    rcc_region::RCCRegion,
-    scb_region::SCBRegion,
+    regions::BXCanRegion,
+    regions::BasicTimerRegion,
+    regions::BridgeRegion,
+    regions::DynMMIOHandler,
+    regions::FlashRegion,
+    regions::NVICRegion,
+    regions::RCCRegion,
+    regions::SCBRegion,
+    regions::UARTRegion,
+    regions::{GPIOPort, GPIORegion},
     segv_handler::mmio_segv_handler,
     simulator::{Simulator, SIMULATOR},
-    uart_region::UARTRegion,
 };
 
-mod basic_timer_region;
-mod bridge_region;
-mod bxcan_region;
 mod context;
-mod flash_region;
-mod gpio_region;
-mod mem_handler;
-mod mmio_handler;
-mod not_implemented_handler;
-mod nvic_region;
-mod rcc_region;
-mod scb_region;
+mod regions;
 mod segv_handler;
 mod simulator;
-mod uart_region;
 mod vector_table;
 
 #[cxx::bridge]
