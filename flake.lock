@@ -13,8 +13,8 @@
         ]
       },
       "locked": {
-        "lastModified": 1776854466,
-        "narHash": "sha256-Ba/Lq+WraSGgGyGFwOk5u3hmbiqouqm4R0f/5Xv8OuA=",
+        "lastModified": 1777517612,
+        "narHash": "sha256-IN+1A81SoX2/5CPYi7PZaUV5nguenyk5pqSJOte7hBU=",
         "path": "/home/syoch/ghq/github.com/syoch/libs-dev/libs/f3-baremetal",
         "type": "path"
       },

@@ -10,7 +10,7 @@ pub enum GPIOPort {
     F,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum GPIOMode {
     Input,
     Output,
@@ -18,7 +18,7 @@ enum GPIOMode {
     Analog,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum GPIOOutputSpeed {
     Low0,
     Low1,
@@ -49,7 +49,7 @@ impl Into<u32> for GPIOOutputSpeed {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum GPIOPull {
     None,
     PullUp,
@@ -80,13 +80,15 @@ impl Into<u32> for GPIOPull {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct GPIOPin {
     mode: GPIOMode,
     output_open_drain: bool,
     output_speed: GPIOOutputSpeed,
     pull: GPIOPull,
     alternate_function: u8,
+    output: bool,
+    input: bool,
 }
 impl GPIOPin {
     fn new() -> Self {
@@ -96,6 +98,25 @@ impl GPIOPin {
             output_speed: GPIOOutputSpeed::Low0,
             pull: GPIOPull::None,
             alternate_function: 0,
+            output: false,
+            input: false,
+        }
+    }
+
+    fn read_input(&self) -> bool {
+        self.input
+    }
+
+    fn write_output(&mut self, value: bool) {
+        if self.output == value {
+            return;
+        }
+        if self.mode == GPIOMode::Output {
+            self.output = value;
+            self.input = value;
+        } else {
+            println!("GPIO: {self:#?}");
+            panic!("Attempt to write to a GPIO pin that is not in output mode");
         }
     }
 }
@@ -164,6 +185,20 @@ impl MmioHandler for GPIORegion {
                 .enumerate()
                 .fold(0, |acc, (i, pin)| acc | ((pin.pull as u32) << (i * 2)));
             pupdr
+        } else if offset == 0x10 {
+            let idr = self
+                .pins
+                .iter()
+                .enumerate()
+                .fold(0, |acc, (i, pin)| acc | ((pin.read_input() as u32) << i));
+            idr
+        } else if offset == 0x14 {
+            let odr = self
+                .pins
+                .iter()
+                .enumerate()
+                .fold(0, |acc, (i, pin)| acc | ((pin.output as u32) << i));
+            odr
         } else if offset == 0x20 {
             let afrl = self.pins[0..8].iter().enumerate().fold(0, |acc, (i, pin)| {
                 acc | ((pin.alternate_function as u32) << (i * 4))
@@ -185,6 +220,10 @@ impl MmioHandler for GPIORegion {
         let offset = address - self.start_addr;
 
         if offset == 0x00 {
+            println!(
+                "Write {:08x}+{:04x} <-- {:08x}",
+                self.start_addr, offset, value
+            );
             for (pin, i) in self.pins.iter_mut().zip(0..) {
                 let mode_bits = (value >> (i * 2)) & 0b11;
                 pin.mode = match mode_bits {
@@ -214,6 +253,16 @@ impl MmioHandler for GPIORegion {
                     0b10 => GPIOPull::PullDown,
                     _ => unreachable!(),
                 };
+            }
+        } else if offset == 0x10 {
+            for (pin, i) in self.pins.iter_mut().zip(0..) {
+                let output_bit = (value >> i) & 0b1;
+                pin.write_output(output_bit != 0);
+            }
+        } else if offset == 0x14 {
+            for (pin, i) in self.pins.iter_mut().zip(0..) {
+                let output_bit = (value >> i) & 0b1;
+                pin.write_output(output_bit != 0);
             }
         } else if offset == 0x20 {
             for (pin, i) in self.pins[0..8].iter_mut().zip(0..) {

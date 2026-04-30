@@ -3,22 +3,36 @@ use std::{cell::RefCell, sync::Mutex};
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
 
 use crate::{
-    bridge_region::BridgeRegion, bxcan_region::BXCanRegion, flash_region::FlashRegion, gpio_region::{GPIOPort, GPIORegion}, mmio_handler::DynMMIOHandler, rcc_region::RCCRegion, segv_handler::mmio_segv_handler, simulator::{SIMULATOR, Simulator}, uart_region::UARTRegion
+    basic_timer_region::BasicTimerRegion,
+    bridge_region::BridgeRegion,
+    bxcan_region::BXCanRegion,
+    flash_region::FlashRegion,
+    gpio_region::{GPIOPort, GPIORegion},
+    mmio_handler::DynMMIOHandler,
+    nvic_region::NVICRegion,
+    rcc_region::RCCRegion,
+    scb_region::SCBRegion,
+    segv_handler::mmio_segv_handler,
+    simulator::{Simulator, SIMULATOR},
+    uart_region::UARTRegion,
 };
 
+mod basic_timer_region;
 mod bridge_region;
+mod bxcan_region;
 mod context;
 mod flash_region;
 mod gpio_region;
 mod mem_handler;
 mod mmio_handler;
 mod not_implemented_handler;
+mod nvic_region;
 mod rcc_region;
+mod scb_region;
 mod segv_handler;
 mod simulator;
 mod uart_region;
 mod vector_table;
-mod bxcan_region;
 
 #[cxx::bridge]
 mod ffi {
@@ -41,6 +55,9 @@ pub extern "C" fn init_mmio_simulator() {
             handlers.push(GPIORegion::new_boxed(0x48001400, GPIOPort::F));
             handlers.push(UARTRegion::new_boxed(0x40004400, 2));
             handlers.push(BXCanRegion::new_boxed(0x40006400));
+            handlers.push(SCBRegion::new_boxed(0xE000_ED00));
+            handlers.push(NVICRegion::new_boxed(0xE000_E100));
+            handlers.push(BasicTimerRegion::new_boxed(0x40001000));
 
             let sim = Simulator::new(handlers);
             RefCell::new(sim)

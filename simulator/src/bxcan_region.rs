@@ -115,12 +115,97 @@ impl CANFilter {
     }
 }
 
+#[derive(Clone, Copy)]
+enum MailboxState {
+    Init,
+    Pending(usize),
+    Working,
+    Done,
+    DoneError,
+}
+
+#[derive(Copy, Clone)]
+struct Mailbox {
+    id: u32,
+    ide: bool,
+    rtr: bool,
+    dlc: u8,
+    data: [u8; 8],
+    state: MailboxState,
+}
+
+impl Mailbox {
+    fn new() -> Self {
+        Self {
+            id: 0,
+            ide: false,
+            rtr: false,
+            dlc: 0,
+            data: [0; 8],
+            state: MailboxState::Init,
+        }
+    }
+
+    fn encode_tir(&self) -> u32 {
+        0 | if self.ide {
+            (self.id & 0x1FFFFFFF) << 3 | 0x4
+        } else {
+            (self.id & 0x7FF) << 21 | 0x4
+        } | if self.rtr { 0x2 } else { 0 }
+    }
+
+    fn encode_tdtr(&self) -> u32 {
+        (self.dlc as u32) & 0xF
+    }
+
+    fn encode_tdlr(&self) -> u32 {
+        (self.data[0] as u32)
+            | ((self.data[1] as u32) << 8)
+            | ((self.data[2] as u32) << 16)
+            | ((self.data[3] as u32) << 24)
+    }
+
+    fn encode_tdhr(&self) -> u32 {
+        (self.data[4] as u32)
+            | ((self.data[5] as u32) << 8)
+            | ((self.data[6] as u32) << 16)
+            | ((self.data[7] as u32) << 24)
+    }
+
+    fn encode_tsr(&self) -> u8 {
+        match self.state {
+            MailboxState::Init => 0x00,
+            MailboxState::Pending(_) => 0x00,
+            MailboxState::Working => 0x00,
+            MailboxState::Done => 0x03,
+            MailboxState::DoneError => 0x09,
+        }
+    }
+
+    fn abort(&mut self) {
+        if let MailboxState::Pending(_) | MailboxState::Working = self.state {
+            self.state = MailboxState::Init;
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        match self.state {
+            MailboxState::Init => true,
+            MailboxState::Done => true,
+            MailboxState::DoneError => true,
+            _ => false,
+        }
+    }
+}
+
 pub struct BXCanRegion {
     start_addr: usize,
     state: CANState,
     bit_timing: BitTiming,
     filter_state: CANFilterState,
     filters: [CANFilter; 13],
+    tx_mailboxes: [Mailbox; 3],
+    rx_mailboxes: [Mailbox; 2],
 
     fifo0_pending_int_enable: bool,
     fifo1_pending_int_enable: bool,
@@ -133,6 +218,8 @@ impl BXCanRegion {
             bit_timing: BitTiming::new(),
             filter_state: CANFilterState::Init,
             filters: [CANFilter::new(); 13],
+            tx_mailboxes: [Mailbox::new(); 3],
+            rx_mailboxes: [Mailbox::new(); 2],
             fifo0_pending_int_enable: false,
             fifo1_pending_int_enable: false,
         }
@@ -191,11 +278,107 @@ impl MmioHandler for BXCanRegion {
         if offset == 0x004 {
             return self.encode_msr();
         }
+        if offset == 0x008 {
+            let mut tsr = 0;
+            let lowest_priority_mailbox = self
+                .tx_mailboxes
+                .iter()
+                .filter(|mb| matches!(mb.state, MailboxState::Pending(_)))
+                .enumerate()
+                .max_by_key(|&(_, mb)| match mb.state {
+                    MailboxState::Pending(priority) => priority,
+                    _ => usize::MAX,
+                })
+                .map(|(i, _)| i);
+            let next_free_mailbox = self
+                .tx_mailboxes
+                .iter()
+                .position(|mb| mb.is_empty())
+                .map(|x| x as u32);
+            if let Some(lowest_priority_mailbox) = lowest_priority_mailbox {
+                tsr |= 0x20 << lowest_priority_mailbox;
+            }
+            if let Some(next_free_mailbox) = next_free_mailbox {
+                tsr |= next_free_mailbox << 24;
+            }
+            for i in 0..3 {
+                tsr |= (self.tx_mailboxes[i].encode_tsr() as u32) << (i * 8);
+                tsr |= if self.tx_mailboxes[i].is_empty() {
+                    0x40 << i
+                } else {
+                    0
+                };
+            }
+            return tsr;
+        }
         if offset == 0x014 {
             return self.encode_ier();
         }
+        if offset == 0x18 {
+            return 0; // ESR, 0 for no error
+        }
         if offset == 0x01C {
             return self.bit_timing.encode();
+        }
+        if offset == 0x180 {
+            return self.tx_mailboxes[0].encode_tir();
+        }
+        if offset == 0x184 {
+            return self.tx_mailboxes[0].encode_tdtr();
+        }
+        if offset == 0x188 {
+            return self.tx_mailboxes[0].encode_tdlr();
+        }
+        if offset == 0x18C {
+            return self.tx_mailboxes[0].encode_tdhr();
+        }
+        if offset == 0x190 {
+            return self.tx_mailboxes[1].encode_tir();
+        }
+        if offset == 0x194 {
+            return self.tx_mailboxes[1].encode_tdtr();
+        }
+        if offset == 0x198 {
+            return self.tx_mailboxes[1].encode_tdlr();
+        }
+        if offset == 0x19C {
+            return self.tx_mailboxes[1].encode_tdhr();
+        }
+        if offset == 0x1A0 {
+            return self.tx_mailboxes[2].encode_tir();
+        }
+        if offset == 0x1A4 {
+            return self.tx_mailboxes[2].encode_tdtr();
+        }
+        if offset == 0x1A8 {
+            return self.tx_mailboxes[2].encode_tdlr();
+        }
+        if offset == 0x1AC {
+            return self.tx_mailboxes[2].encode_tdhr();
+        }
+        if offset == 0x1B0 {
+            return self.rx_mailboxes[0].encode_tir();
+        }
+        if offset == 0x1B4 {
+            return self.rx_mailboxes[0].encode_tdtr();
+        }
+        if offset == 0x1B8 {
+            return self.rx_mailboxes[0].encode_tdlr();
+        }
+        if offset == 0x1BC {
+            return self.rx_mailboxes[0].encode_tdhr();
+        }
+        if offset == 0x1C0 {
+            return self.rx_mailboxes[1].encode_tir();
+        }
+        if offset == 0x1C4 {
+            return self.rx_mailboxes[1].encode_tdtr();
+        }
+        if offset == 0x1C8 {
+            return self.rx_mailboxes[1].encode_tdlr();
+        }
+        if offset == 0x1CC {
+            return self.rx_mailboxes[1].encode_tdhr();
         }
         if offset == 0x200 {
             return 0x2A1C0E00

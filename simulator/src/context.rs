@@ -13,6 +13,14 @@ pub fn iced_register_to_libc_reg(reg: Register) -> Option<libc::c_int> {
         Register::RBP | Register::EBP => Some(libc::REG_RBP),
         Register::RSI | Register::ESI => Some(libc::REG_RSI),
         Register::RDI | Register::EDI => Some(libc::REG_RDI),
+        Register::R8D | Register::R8 => Some(libc::REG_R8),
+        Register::R9D | Register::R9 => Some(libc::REG_R9),
+        Register::R10D | Register::R10 => Some(libc::REG_R10),
+        Register::R11D | Register::R11 => Some(libc::REG_R11),
+        Register::R12D | Register::R12 => Some(libc::REG_R12),
+        Register::R13D | Register::R13 => Some(libc::REG_R13),
+        Register::R14D | Register::R14 => Some(libc::REG_R14),
+        Register::R15D | Register::R15 => Some(libc::REG_R15),
         _ => None,
     }
 }

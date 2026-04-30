@@ -1,24 +1,12 @@
-use std::{
-    cell::RefCell,
-    sync::{Mutex, OnceLock},
-};
-
 use iced_x86::{
     Decoder, Formatter, GasFormatter, Instruction, InstructionInfoFactory, Mnemonic, OpKind,
     Register,
 };
-use nix::{
-    libc::{self, mcontext_t},
-    sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal},
-};
+use nix::libc::{self, mcontext_t};
 
 use crate::{
-    bridge_region::BridgeRegion,
     context::{iced_register_to_libc_reg, Context},
-    flash_region::FlashRegion,
-    mmio_handler::DynMMIOHandler,
-    rcc_region::RCCRegion,
-    simulator::{Simulator, SIMULATOR},
+    simulator::SIMULATOR,
 };
 
 fn reraise_as_native_segv() {
@@ -114,6 +102,12 @@ pub extern "C" fn mmio_segv_handler(
             let new_value = value | operand_value;
             ctx.set_operand_value(inst, 0, new_value);
         }
+        Mnemonic::Xor => {
+            let value = ctx.get_operand_value(0, &inst).unwrap() as u32;
+            let operand_value = ctx.get_operand_value(1, &inst).unwrap() as u32;
+            let new_value = value ^ operand_value;
+            ctx.set_operand_value(inst, 0, new_value);
+        }
         Mnemonic::And => {
             let op0 = ctx.get_operand_value(0, &inst).unwrap() as u32;
             let op1 = ctx.get_operand_value(1, &inst).unwrap() as u32;
@@ -152,6 +146,10 @@ pub extern "C" fn mmio_segv_handler(
             }
         }
         _ => {
+            println!(
+                "Unsupported instruction at PC {pc:?}: {:?}",
+                inst.mnemonic()
+            );
             diagnose_inst(mcontext, inst);
             reraise_as_native_segv();
         }
