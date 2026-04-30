@@ -196,6 +196,33 @@ impl Mailbox {
             _ => false,
         }
     }
+    fn write_tir(&mut self, value: u32) {
+        self.ide = (value & 0x4) != 0;
+        self.rtr = (value & 0x2) != 0;
+        if self.ide {
+            self.id = (value >> 3) & 0x1FFFFFFF;
+        } else {
+            self.id = (value >> 21) & 0x7FF;
+        }
+        if value & 1 != 0 {
+            self.state = MailboxState::Pending(0);
+        }
+    }
+    fn write_tdtr(&mut self, value: u32) {
+        self.dlc = (value & 0xF) as u8;
+    }
+    fn write_tdlr(&mut self, value: u32) {
+        self.data[0] = (value & 0xFF) as u8;
+        self.data[1] = ((value >> 8) & 0xFF) as u8;
+        self.data[2] = ((value >> 16) & 0xFF) as u8;
+        self.data[3] = ((value >> 24) & 0xFF) as u8;
+    }
+    fn write_tdhr(&mut self, value: u32) {
+        self.data[4] = (value & 0xFF) as u8;
+        self.data[5] = ((value >> 8) & 0xFF) as u8;
+        self.data[6] = ((value >> 16) & 0xFF) as u8;
+        self.data[7] = ((value >> 24) & 0xFF) as u8;
+    }
 }
 
 pub struct BXCanRegion {
@@ -304,7 +331,7 @@ impl MmioHandler for BXCanRegion {
             for i in 0..3 {
                 tsr |= (self.tx_mailboxes[i].encode_tsr() as u32) << (i * 8);
                 tsr |= if self.tx_mailboxes[i].is_empty() {
-                    0x40 << i
+                    1 << (26 + i)
                 } else {
                     0
                 };
@@ -475,7 +502,6 @@ impl MmioHandler for BXCanRegion {
                 } else {
                     CANState::Ready
                 };
-                println!("bxCAN state changed to {:?}", self.state);
                 changed_bits &= !0x00000001;
             }
 
@@ -497,6 +523,87 @@ impl MmioHandler for BXCanRegion {
 
         if offset == 0x1C {
             self.bit_timing.write(value);
+            return;
+        }
+
+        if offset == 0x180 {
+            self.tx_mailboxes[0].write_tir(value);
+            return;
+        }
+        if offset == 0x184 {
+            self.tx_mailboxes[0].write_tdtr(value);
+            return;
+        }
+        if offset == 0x188 {
+            self.tx_mailboxes[0].write_tdlr(value);
+            return;
+        }
+        if offset == 0x18C {
+            self.tx_mailboxes[0].write_tdhr(value);
+            return;
+        }
+        if offset == 0x190 {
+            self.tx_mailboxes[1].write_tir(value);
+            return;
+        }
+        if offset == 0x194 {
+            self.tx_mailboxes[1].write_tdtr(value);
+            return;
+        }
+        if offset == 0x198 {
+            self.tx_mailboxes[1].write_tdlr(value);
+            return;
+        }
+        if offset == 0x19C {
+            self.tx_mailboxes[1].write_tdhr(value);
+            return;
+        }
+        if offset == 0x1A0 {
+            self.tx_mailboxes[2].write_tir(value);
+            return;
+        }
+        if offset == 0x1A4 {
+            self.tx_mailboxes[2].write_tdtr(value);
+            return;
+        }
+        if offset == 0x1A8 {
+            self.tx_mailboxes[2].write_tdlr(value);
+            return;
+        }
+        if offset == 0x1AC {
+            self.tx_mailboxes[2].write_tdhr(value);
+            return;
+        }
+        if offset == 0x1B0 {
+            self.rx_mailboxes[0].write_tir(value);
+            return;
+        }
+        if offset == 0x1B4 {
+            self.rx_mailboxes[0].write_tdtr(value);
+            return;
+        }
+        if offset == 0x1B8 {
+            self.rx_mailboxes[0].write_tdlr(value);
+            return;
+        }
+        if offset == 0x1BC {
+            self.rx_mailboxes[0].write_tdhr(value);
+            return;
+        }
+        if offset == 0x1C0 {
+            self.rx_mailboxes[1].write_tir(value);
+            return;
+        }
+        if offset == 0x1C4 {
+            self.rx_mailboxes[1].write_tdtr(value);
+            return;
+        }
+        if offset == 0x1C8 {
+            self.rx_mailboxes[1].write_tdlr(value);
+            return;
+        }
+        if offset == 0x1CC {
+            self.rx_mailboxes[1].write_tdhr(value);
             return;
         }
 

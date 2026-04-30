@@ -220,10 +220,6 @@ impl MmioHandler for GPIORegion {
         let offset = address - self.start_addr;
 
         if offset == 0x00 {
-            println!(
-                "Write {:08x}+{:04x} <-- {:08x}",
-                self.start_addr, offset, value
-            );
             for (pin, i) in self.pins.iter_mut().zip(0..) {
                 let mode_bits = (value >> (i * 2)) & 0b11;
                 pin.mode = match mode_bits {

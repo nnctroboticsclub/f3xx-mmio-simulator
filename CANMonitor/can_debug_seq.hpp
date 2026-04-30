@@ -37,15 +37,15 @@ class CANDebug_Seq {
     int i = 0;
     while (true) {
       //* UI
-      // printf("\x1b[0;1H");
+      printf("\x1b[0;1H");
 
       printf("F303K8 baremetal CAN Test (loop=%d)" NEWLINE, i);
 
       auto error_statistic = AppCAN::GetErrorStatistic();
-      // printf("CAN Status [%s]" NEWLINE, error_statistic.StatusToString());
+      printf("CAN Status [%s]" NEWLINE, error_statistic.StatusToString());
       printf("  - REC: %d, TEC: %d" NEWLINE, error_statistic.rec,
              error_statistic.tec);
-      // printf("  - LEC: %s" NEWLINE, error_statistic.LastErrorCodeToString());
+      printf("  - LEC: %s" NEWLINE, error_statistic.LastErrorCodeToString());
 
       printf("CAN Tx Status" NEWLINE);
       auto mailbox0 = AppCAN::GetTxMailbox<0>();
