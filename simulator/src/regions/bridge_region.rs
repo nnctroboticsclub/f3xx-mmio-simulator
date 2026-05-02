@@ -1,19 +1,23 @@
-use super::MmioHandler;
+use std::sync::Arc;
+
+use crate::simulator::Device;
 use crate::vector_table::VectorTable;
+
+use super::MmioHandler;
 
 pub struct BridgeRegion {
     start_addr: usize,
     vtor: usize,
 }
 impl BridgeRegion {
-    fn new(start_addr: usize) -> Self {
+    fn new(dev: Arc<Device>, start_addr: usize) -> Self {
         Self {
             start_addr,
             vtor: 0,
         }
     }
-    pub fn new_boxed(start_addr: usize) -> Box<Self> {
-        Box::new(Self::new(start_addr))
+    pub fn new_boxed(dev: Arc<Device>, start_addr: usize) -> Box<Self> {
+        Box::new(Self::new(dev, start_addr))
     }
 
     pub fn get_registered_vector_table(&self) -> *mut VectorTable {

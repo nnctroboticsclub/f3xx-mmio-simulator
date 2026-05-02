@@ -15,6 +15,8 @@
   inputs.f3-baremetal.inputs.nano.follows = "nano";
   inputs.f3-baremetal.inputs.nixpkgs.follows = "nixpkgs";
 
+  inputs.devconsole.url = "github:syoch/devconsole";
+
   outputs =
     {
       self,
@@ -22,6 +24,7 @@
       roboenv,
       nano,
       f3-baremetal,
+      devconsole,
     }:
     let
       system = "x86_64-linux";
@@ -81,6 +84,8 @@
           pkgs.rustfmt
           pkgs.rustc
           pkgs.clippy
+
+          devconsole.packages.${system}.default
         ];
 
         env.RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";

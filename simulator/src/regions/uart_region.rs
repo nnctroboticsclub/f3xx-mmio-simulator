@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use crate::simulator::Device;
+
 use super::MmioHandler;
 
 const UART_REGION_SIZE: usize = 0x2C;
@@ -9,7 +13,7 @@ pub struct UARTRegion {
     cr1: u32,
 }
 impl UARTRegion {
-    fn new(start_addr: usize, peripheral_index: u8) -> Self {
+    fn new(dev: Arc<Device>, start_addr: usize, peripheral_index: u8) -> Self {
         Self {
             start_addr,
             peripheral_index,
@@ -17,8 +21,8 @@ impl UARTRegion {
             cr1: 0,
         }
     }
-    pub fn new_boxed(start_addr: usize, peripheral_index: u8) -> Box<Self> {
-        Box::new(Self::new(start_addr, peripheral_index))
+    pub fn new_boxed(dev: Arc<Device>, start_addr: usize, peripheral_index: u8) -> Box<Self> {
+        Box::new(Self::new(dev, start_addr, peripheral_index))
     }
     fn is_transmitter_enabled(&self) -> bool {
         return self.cr1 & 0x8 != 0;

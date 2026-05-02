@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use crate::simulator::Device;
+
 use super::MmioHandler;
 
 const BXCAN_REGION_SIZE: usize = 0x2B0;
@@ -238,7 +242,7 @@ pub struct BXCanRegion {
     fifo1_pending_int_enable: bool,
 }
 impl BXCanRegion {
-    fn new(start_addr: usize) -> Self {
+    fn new(dev: Arc<Device>, start_addr: usize) -> Self {
         Self {
             start_addr,
             state: CANState::Sleep,
@@ -251,8 +255,8 @@ impl BXCanRegion {
             fifo1_pending_int_enable: false,
         }
     }
-    pub fn new_boxed(start_addr: usize) -> Box<Self> {
-        Box::new(Self::new(start_addr))
+    pub fn new_boxed(dev: Arc<Device>, start_addr: usize) -> Box<Self> {
+        Box::new(Self::new(dev, start_addr))
     }
 
     fn encode_mcr(&self) -> u32 {

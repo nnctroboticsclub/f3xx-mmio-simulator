@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use crate::simulator::Device;
+
 use super::MmioHandler;
 
 struct MemHandler {
@@ -6,7 +10,7 @@ struct MemHandler {
     end_addr: usize,
 }
 impl MemHandler {
-    fn new(size: usize, start_addr: usize) -> Self {
+    fn new(dev: Arc<Device>, size: usize, start_addr: usize) -> Self {
         let end_addr = start_addr + size;
         Self {
             mem: vec![0; size],
@@ -14,8 +18,8 @@ impl MemHandler {
             end_addr,
         }
     }
-    fn new_boxed(size: usize, start_addr: usize) -> Box<Self> {
-        Box::new(Self::new(size, start_addr))
+    fn new_boxed(dev: Arc<Device>, size: usize, start_addr: usize) -> Box<Self> {
+        Box::new(Self::new(dev, size, start_addr))
     }
 }
 impl MmioHandler for MemHandler {

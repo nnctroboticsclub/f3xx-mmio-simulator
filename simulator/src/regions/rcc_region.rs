@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use crate::simulator::Device;
+
 use super::MmioHandler;
 
 const RCC_REGION_SIZE: usize = 0x24;
@@ -23,7 +27,7 @@ pub struct RCCRegion {
     sysclk_source: SysClockSource,
 }
 impl RCCRegion {
-    fn new(start_addr: usize) -> Self {
+    fn new(dev: Arc<Device>, start_addr: usize) -> Self {
         let mut mem = [0u32; RCC_REGION_SIZE / 4];
         mem[0] = 0x03300083; // PLL, HSE, HSI ON
         mem[5] = 0x00000014;
@@ -39,8 +43,8 @@ impl RCCRegion {
             sysclk_source: SysClockSource::HSI,
         }
     }
-    pub fn new_boxed(start_addr: usize) -> Box<Self> {
-        Box::new(Self::new(start_addr))
+    pub fn new_boxed(dev: Arc<Device>, start_addr: usize) -> Box<Self> {
+        Box::new(Self::new(dev, start_addr))
     }
 
     fn set_pll_multiplier_value(&mut self, value: u32) {

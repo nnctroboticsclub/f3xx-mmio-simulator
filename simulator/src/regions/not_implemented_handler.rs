@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use crate::simulator::Device;
+
 use super::MmioHandler;
 
 pub struct NotImplementedHandler {
@@ -5,15 +9,15 @@ pub struct NotImplementedHandler {
     end_addr: usize,
 }
 impl NotImplementedHandler {
-    fn new(size: usize, start_addr: usize) -> Self {
+    fn new(dev: Arc<Device>, size: usize, start_addr: usize) -> Self {
         let end_addr = start_addr + size;
         Self {
             start_addr,
             end_addr,
         }
     }
-    fn new_boxed(size: usize, start_addr: usize) -> Box<Self> {
-        Box::new(Self::new(size, start_addr))
+    fn new_boxed(dev: Arc<Device>, size: usize, start_addr: usize) -> Box<Self> {
+        Box::new(Self::new(dev, size, start_addr))
     }
 }
 impl MmioHandler for NotImplementedHandler {
