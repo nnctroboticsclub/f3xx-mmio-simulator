@@ -1,13 +1,16 @@
 use std::{
     cell::RefCell,
     sync::{Arc, Mutex, OnceLock},
+    thread,
 };
 
 use devconsole::{ChannelID, DCClient};
 use tokio::{
-    runtime::{Builder, Runtime},
+    runtime::{Builder, Handle, Runtime},
     sync::mpsc,
 };
+
+use crate::runtime::get_runtime;
 
 use super::DynMMIOHandler;
 
@@ -54,11 +57,7 @@ impl DynDevice {
     }
 
     pub fn send_blocking(&self, channel_id: ChannelID, data: String) {
-        Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create Tokio runtime")
-            .block_on(self.send(channel_id, data))
+        get_runtime().block_on(self.send(channel_id, data))
     }
 
     pub async fn send_bin(&self, channel_id: ChannelID, data: Vec<u8>) {
@@ -72,11 +71,7 @@ impl DynDevice {
     }
 
     pub fn send_bin_blocking(&self, channel_id: ChannelID, data: Vec<u8>) {
-        Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create Tokio runtime")
-            .block_on(self.send_bin(channel_id, data))
+        get_runtime().block_on(self.send_bin(channel_id, data))
     }
 
     pub async fn listen(

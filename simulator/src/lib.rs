@@ -11,12 +11,14 @@ use crate::{
         BXCanRegion, BasicTimerRegion, BridgeRegion, DynMMIOHandler, FlashRegion, GPIOPort,
         GPIORegion, NVICRegion, RCCRegion, SCBRegion, UARTRegion,
     },
+    runtime::get_runtime,
     segv_handler::mmio_segv_handler,
     simulator::{DynDevice, Simulator, SIMULATOR},
 };
 
 mod context;
 mod regions;
+mod runtime;
 mod segv_handler;
 mod simulator;
 mod vector_table;
@@ -65,10 +67,5 @@ async fn init() {
 }
 
 pub extern "C" fn init_mmio_simulator() {
-    let rt = Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to create Tokio runtime");
-
-    rt.block_on(init());
+    get_runtime().block_on(init());
 }
