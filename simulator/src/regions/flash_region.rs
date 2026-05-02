@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::simulator::Device;
+use crate::simulator::DynDevice;
 
 use super::MmioHandler;
 
@@ -10,7 +10,7 @@ pub struct FlashRegion {
     mem: [u8; FLASH_REGION_SIZE],
 }
 impl FlashRegion {
-    fn new(dev: Arc<Device>, start_addr: usize) -> Self {
+    fn new(dev: DynDevice, start_addr: usize) -> Self {
         let mut mem = [0; FLASH_REGION_SIZE];
         mem[0] = 0x03;
         mem[0x20] = 0xFF;
@@ -19,7 +19,7 @@ impl FlashRegion {
         mem[0x23] = 0xFF;
         Self { start_addr, mem }
     }
-    pub fn new_boxed(dev: Arc<Device>, start_addr: usize) -> Box<Self> {
+    pub fn new_boxed(dev: DynDevice, start_addr: usize) -> Box<Self> {
         Box::new(Self::new(dev, start_addr))
     }
 }

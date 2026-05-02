@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::simulator::Device;
+use crate::simulator::DynDevice;
 
 use super::MmioHandler;
 
@@ -131,17 +131,17 @@ pub struct GPIORegion {
     pins: [GPIOPin; 16],
 }
 impl GPIORegion {
-    fn new(dev: Arc<Device>, start_addr: usize, port: GPIOPort) -> Self {
+    fn new(dev: DynDevice, start_addr: usize, port: GPIOPort) -> Self {
         Self {
             start_addr,
             port,
             pins: [GPIOPin::new(); 16],
         }
     }
-    pub fn new_boxed(dev: Arc<Device>, start_addr: usize, port: GPIOPort) -> Box<Self> {
+    pub fn new_boxed(dev: DynDevice, start_addr: usize, port: GPIOPort) -> Box<Self> {
         Box::new(Self::new(dev, start_addr, port))
     }
-    pub fn new_gpioa(dev: Arc<Device>, start_addr: usize) -> Box<Self> {
+    pub fn new_gpioa(dev: DynDevice, start_addr: usize) -> Box<Self> {
         let mut region = Self::new(dev, start_addr, GPIOPort::A);
         region.pins[15].mode = GPIOMode::AlternateFunction;
         region.pins[14].mode = GPIOMode::AlternateFunction;
@@ -152,7 +152,7 @@ impl GPIORegion {
         region.pins[13].pull = GPIOPull::PullDown;
         Box::new(region)
     }
-    pub fn new_gpiob(dev: Arc<Device>, start_addr: usize) -> Box<Self> {
+    pub fn new_gpiob(dev: DynDevice, start_addr: usize) -> Box<Self> {
         let mut region = Self::new(dev, start_addr, GPIOPort::B);
         region.pins[4].mode = GPIOMode::AlternateFunction;
         region.pins[3].mode = GPIOMode::AlternateFunction;

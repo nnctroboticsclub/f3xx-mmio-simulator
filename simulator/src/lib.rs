@@ -12,7 +12,7 @@ use crate::{
         GPIORegion, NVICRegion, RCCRegion, SCBRegion, UARTRegion,
     },
     segv_handler::mmio_segv_handler,
-    simulator::{Device, Simulator, SIMULATOR},
+    simulator::{DynDevice, Simulator, SIMULATOR},
 };
 
 mod context;
@@ -28,13 +28,8 @@ mod ffi {
     }
 }
 
-pub extern "C" fn init_mmio_simulator() {
-    let rt = Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to create Tokio runtime");
-    let dev = rt.block_on(Device::new("ws://localhost:9001"));
-    let dev = Arc::new(dev);
+async fn init() {
+    let dev = DynDevice::new("ws://localhost:9001").await;
 
     let mut handlers = Vec::<DynMMIOHandler>::new();
     handlers.push(FlashRegion::new_boxed(dev.clone(), 0x4002_2000));
@@ -46,7 +41,7 @@ pub extern "C" fn init_mmio_simulator() {
     handlers.push(GPIORegion::new_boxed(dev.clone(), 0x48000C00, GPIOPort::D));
     handlers.push(GPIORegion::new_boxed(dev.clone(), 0x48001400, GPIOPort::F));
     handlers.push(UARTRegion::new_boxed(dev.clone(), 0x40004400, 2));
-    handlers.push(BXCanRegion::new_boxed(dev.clone(), 0x40006400));
+    handlers.push(BXCanRegion::new_boxed(dev.clone(), 0x40006400).await);
     handlers.push(SCBRegion::new_boxed(dev.clone(), 0xE000_ED00));
     handlers.push(NVICRegion::new_boxed(dev.clone(), 0xE000_E100));
     handlers.push(BasicTimerRegion::new_boxed(dev.clone(), 0x40001000));
@@ -67,4 +62,13 @@ pub extern "C" fn init_mmio_simulator() {
     unsafe {
         sigaction(Signal::SIGSEGV, &sa).expect("Failed to register the mmio signal handler");
     }
+}
+
+pub extern "C" fn init_mmio_simulator() {
+    let rt = Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create Tokio runtime");
+
+    rt.block_on(init());
 }

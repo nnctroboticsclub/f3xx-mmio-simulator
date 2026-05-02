@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::simulator::Device;
+use crate::simulator::DynDevice;
 
 use super::MmioHandler;
 
@@ -16,7 +16,7 @@ pub struct BasicTimerRegion {
     update_interrupt_enabled: bool,
 }
 impl BasicTimerRegion {
-    fn new(dev: Arc<Device>, start_addr: usize) -> Self {
+    fn new(dev: DynDevice, start_addr: usize) -> Self {
         Self {
             start_addr,
             prescaler: 1,
@@ -27,7 +27,7 @@ impl BasicTimerRegion {
             update_interrupt_enabled: false,
         }
     }
-    pub fn new_boxed(dev: Arc<Device>, start_addr: usize) -> Box<Self> {
+    pub fn new_boxed(dev: DynDevice, start_addr: usize) -> Box<Self> {
         Box::new(Self::new(dev, start_addr))
     }
     fn encode_cr1(&self) -> u32 {

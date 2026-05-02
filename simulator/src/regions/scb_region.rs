@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::simulator::Device;
+use crate::simulator::DynDevice;
 
 use super::MmioHandler;
 
@@ -10,10 +10,10 @@ pub struct SCBRegion {
     start_addr: usize,
 }
 impl SCBRegion {
-    fn new(dev: Arc<Device>, start_addr: usize) -> Self {
+    fn new(dev: DynDevice, start_addr: usize) -> Self {
         Self { start_addr }
     }
-    pub fn new_boxed(dev: Arc<Device>, start_addr: usize) -> Box<Self> {
+    pub fn new_boxed(dev: DynDevice, start_addr: usize) -> Box<Self> {
         Box::new(Self::new(dev, start_addr))
     }
 }
