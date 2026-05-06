@@ -8,6 +8,17 @@ impl CANMessage {
     pub fn new(id: u32, data: [u8; 8], dlc: u8) -> Self {
         Self { id, data, dlc }
     }
+
+    pub fn get_id(&self) -> u32 {
+        self.id
+    }
+    pub fn get_data(&self) -> &[u8; 8] {
+        &self.data
+    }
+
+    pub fn get_dlc(&self) -> u8 {
+        self.dlc
+    }
 }
 
 impl Into<Vec<u8>> for CANMessage {

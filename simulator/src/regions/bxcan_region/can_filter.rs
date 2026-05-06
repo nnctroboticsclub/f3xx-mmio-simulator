@@ -265,4 +265,39 @@ impl CANFilters {
 
         None
     }
+
+    pub fn route_message(&self, id: u32, is_extended_id: bool) -> Option<FIFOIndex> {
+        for filter in self.filters.iter() {
+            if !filter.activated {
+                continue;
+            }
+            let id_masked = if is_extended_id {
+                id & 0x1FFFFFFF
+            } else {
+                id & 0x7FF
+            };
+            let filter_id_masked = if is_extended_id {
+                filter.bank0 & 0x1FFFFFFF
+            } else {
+                filter.bank0 & 0x7FF
+            };
+            let mask = if is_extended_id {
+                if let CANFilterType::Mask = filter.filter_type {
+                    filter.bank1 & 0x1FFFFFFF
+                } else {
+                    0x1FFFFFFF
+                }
+            } else {
+                if let CANFilterType::Mask = filter.filter_type {
+                    filter.bank1 & 0x7FF
+                } else {
+                    0x7FF
+                }
+            };
+            if (id_masked ^ filter_id_masked) & mask == 0 {
+                return Some(filter.fifo_assignment);
+            }
+        }
+        None
+    }
 }

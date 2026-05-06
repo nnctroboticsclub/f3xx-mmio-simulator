@@ -8,13 +8,19 @@ mod filter_scale;
 mod mailbox;
 mod mailboxes;
 
+use std::sync::{Arc, Mutex};
+
 use super::MmioHandler;
-use crate::{regions::bxcan_region::mailboxes::TXMailbox, simulator::DynDevice};
+use crate::{
+    regions::bxcan_region::{can_message::CANMessage, fifo_index::FIFOIndex, mailboxes::TXMailbox},
+    simulator::DynDevice,
+};
 use bit_timing::BitTiming;
 use can_filter::CANFilters;
 use can_state::CANState;
 use devconsole::ChannelID;
 use mailbox::Mailbox;
+use tokio::sync::mpsc;
 
 const BXCAN_REGION_SIZE: usize = 0x2B0;
 
@@ -25,28 +31,67 @@ pub struct BXCanRegion {
     start_addr: usize,
     state: CANState,
     bit_timing: BitTiming,
-    filters: CANFilters,
+    filters: Arc<Mutex<CANFilters>>,
     tx_mailboxes: TXMailbox,
-    rx_mailboxes: [Mailbox; 2],
+    rx_mailboxes: Arc<Mutex<[Mailbox; 2]>>,
 
     fifo0_pending_int_enable: bool,
     fifo1_pending_int_enable: bool,
 }
 impl BXCanRegion {
     async fn new(dev: DynDevice, start_addr: usize) -> Self {
-        Self {
+        let channel = dev.open_channel("can".to_string()).await;
+
+        let obj = Self {
             device: dev.clone(),
-            can_channel: dev.open_channel("can".to_string()).await,
+            can_channel: channel,
             start_addr,
             state: CANState::Sleep,
             bit_timing: BitTiming::new(),
-            filters: CANFilters::new(),
+            filters: Arc::new(Mutex::new(CANFilters::new())),
             tx_mailboxes: TXMailbox::new(),
-            rx_mailboxes: [Mailbox::new(); 2],
+            rx_mailboxes: Arc::new(Mutex::new([Mailbox::new(); 2])),
             fifo0_pending_int_enable: false,
             fifo1_pending_int_enable: false,
+        };
+
+        let (tx, mut rx) = mpsc::channel(4);
+        tokio::spawn(Self::dc_listener(
+            obj.filters.clone(),
+            obj.rx_mailboxes.clone(),
+            rx,
+        ));
+
+        dev.listen(channel, None, Some(tx)).await;
+        obj
+    }
+
+    async fn dc_listener(
+        filters: Arc<Mutex<CANFilters>>,
+        rx_mailboxes: Arc<Mutex<[Mailbox; 2]>>,
+        mut rx: mpsc::Receiver<(ChannelID, Vec<u8>)>,
+    ) {
+        while let Some((_cid, msg)) = rx.recv().await {
+            let msg = CANMessage::from(msg);
+            let fifo = filters.lock().unwrap().route_message(msg.get_id(), true);
+            if let Some(fifo) = fifo {
+                let mut mailboxes = rx_mailboxes.lock().unwrap();
+                let mailbox = if fifo == FIFOIndex::FIFO0 {
+                    &mut mailboxes[0]
+                } else {
+                    &mut mailboxes[1]
+                };
+                mailbox.store_message(msg);
+
+                let irqn = match fifo {
+                    FIFOIndex::FIFO0 => 20,
+                    FIFOIndex::FIFO1 => 21,
+                };
+                // self.device.fire_interrupt(irqn);
+            }
         }
     }
+
     pub async fn new_boxed(dev: DynDevice, start_addr: usize) -> Box<Self> {
         Box::new(Self::new(dev, start_addr).await)
     }
@@ -116,33 +161,35 @@ impl MmioHandler for BXCanRegion {
         }
 
         if offset == 0x1B0 {
-            return self.rx_mailboxes[0].encode_tir();
+            return self.rx_mailboxes.lock().unwrap()[0].encode_tir();
         }
         if offset == 0x1B4 {
-            return self.rx_mailboxes[0].encode_tdtr();
+            return self.rx_mailboxes.lock().unwrap()[0].encode_tdtr();
         }
         if offset == 0x1B8 {
-            return self.rx_mailboxes[0].encode_tdlr();
+            return self.rx_mailboxes.lock().unwrap()[0].encode_tdlr();
         }
         if offset == 0x1BC {
-            return self.rx_mailboxes[0].encode_tdhr();
+            return self.rx_mailboxes.lock().unwrap()[0].encode_tdhr();
         }
         if offset == 0x1C0 {
-            return self.rx_mailboxes[1].encode_tir();
+            return self.rx_mailboxes.lock().unwrap()[1].encode_tir();
         }
         if offset == 0x1C4 {
-            return self.rx_mailboxes[1].encode_tdtr();
+            return self.rx_mailboxes.lock().unwrap()[1].encode_tdtr();
         }
         if offset == 0x1C8 {
-            return self.rx_mailboxes[1].encode_tdlr();
+            return self.rx_mailboxes.lock().unwrap()[1].encode_tdlr();
         }
         if offset == 0x1CC {
-            return self.rx_mailboxes[1].encode_tdhr();
+            return self.rx_mailboxes.lock().unwrap()[1].encode_tdhr();
         }
 
         if 0x200 <= offset && offset <= 0x2B0 {
             return self
                 .filters
+                .lock()
+                .unwrap()
                 .handle_read(offset - 0x200)
                 .expect("bxCAN filter read handling should not fail");
         }
@@ -210,40 +257,43 @@ impl MmioHandler for BXCanRegion {
         }
 
         if offset == 0x1B0 {
-            self.rx_mailboxes[0].write_tir(value);
+            self.rx_mailboxes.lock().unwrap()[0].write_tir(value);
             return;
         }
         if offset == 0x1B4 {
-            self.rx_mailboxes[0].write_tdtr(value);
+            self.rx_mailboxes.lock().unwrap()[0].write_tdtr(value);
             return;
         }
         if offset == 0x1B8 {
-            self.rx_mailboxes[0].write_tdlr(value);
+            self.rx_mailboxes.lock().unwrap()[0].write_tdlr(value);
             return;
         }
         if offset == 0x1BC {
-            self.rx_mailboxes[0].write_tdhr(value);
+            self.rx_mailboxes.lock().unwrap()[0].write_tdhr(value);
             return;
         }
         if offset == 0x1C0 {
-            self.rx_mailboxes[1].write_tir(value);
+            self.rx_mailboxes.lock().unwrap()[1].write_tir(value);
             return;
         }
         if offset == 0x1C4 {
-            self.rx_mailboxes[1].write_tdtr(value);
+            self.rx_mailboxes.lock().unwrap()[1].write_tdtr(value);
             return;
         }
         if offset == 0x1C8 {
-            self.rx_mailboxes[1].write_tdlr(value);
+            self.rx_mailboxes.lock().unwrap()[1].write_tdlr(value);
             return;
         }
         if offset == 0x1CC {
-            self.rx_mailboxes[1].write_tdhr(value);
+            self.rx_mailboxes.lock().unwrap()[1].write_tdhr(value);
             return;
         }
 
         if 0x200 <= offset && offset <= 0x2B0 {
-            self.filters.handle_write(offset - 0x200, value);
+            self.filters
+                .lock()
+                .unwrap()
+                .handle_write(offset - 0x200, value);
             return;
         }
 

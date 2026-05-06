@@ -90,6 +90,22 @@ impl Mailbox {
         self.data[6] = ((value >> 16) & 0xFF) as u8;
         self.data[7] = ((value >> 24) & 0xFF) as u8;
     }
+
+    pub fn store_message(&mut self, msg: CANMessage) {
+        // TODO handle RTR and IDE
+        self.id = msg.get_id();
+        self.ide = true;
+        self.rtr = false;
+        self.dlc = msg.get_dlc();
+        let data = msg.get_data();
+        for i in 0..8 {
+            self.data[i] = if i < data.len() { data[i] } else { 0 };
+        }
+    }
+
+    pub fn to_message(&self) -> CANMessage {
+        CANMessage::new(self.id, self.data, self.dlc)
+    }
 }
 
 impl Into<CANMessage> for Mailbox {
