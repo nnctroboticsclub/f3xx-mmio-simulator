@@ -10,12 +10,17 @@ use tokio::{
     sync::mpsc,
 };
 
-use crate::runtime::get_runtime;
+use crate::{
+    runtime::get_runtime,
+    vector_table::{VectorTable, VectorTablePtr},
+};
 
 use super::DynMMIOHandler;
 
 struct Device {
     devconsole_client: DCClient,
+    vector_table: VectorTablePtr,
+    active_interrupt: Option<u32>,
 }
 
 impl Device {
@@ -24,6 +29,8 @@ impl Device {
             devconsole_client: DCClient::new(url)
                 .await
                 .expect("Failed to connect to the devconsole server"),
+            vector_table: VectorTablePtr::new_null(),
+            active_interrupt: None,
         }
     }
 }
@@ -87,6 +94,41 @@ impl DynDevice {
             .listen(channel_id, tx, tx_bin)
             .await
             .unwrap();
+    }
+
+    pub fn get_vector_table(&self) -> VectorTablePtr {
+        self.0.lock().unwrap().vector_table.clone()
+    }
+
+    pub fn set_vector_table(&self, vector_table: VectorTablePtr) {
+        self.0.lock().unwrap().vector_table = vector_table;
+    }
+
+    pub fn fire_interrupt(&self, irqn: u32) {
+        let handler: extern "C" fn() = if let Some(handler) = self
+            .0
+            .lock()
+            .unwrap()
+            .vector_table
+            .try_get_handler(irqn as usize)
+        {
+            unsafe { std::mem::transmute(handler) }
+        } else {
+            println!("Vector table is not set");
+            println!(
+                "vector_table: {:?}",
+                self.0.lock().unwrap().vector_table.as_ptr()
+            );
+            return;
+        };
+
+        self.0.lock().unwrap().active_interrupt = Some(irqn);
+        handler();
+        self.0.lock().unwrap().active_interrupt = None;
+    }
+
+    pub fn get_active_interrupt(&self) -> Option<u32> {
+        self.0.lock().unwrap().active_interrupt
     }
 }
 

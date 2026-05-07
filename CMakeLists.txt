@@ -7,6 +7,7 @@ set(ROBO_TOOLCHAIN_FILE ClangToolchain)
 project(f3xx-mmio-simulator VERSION 1.0.0)
 enable_language(C CXX ASM)
 
+set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)

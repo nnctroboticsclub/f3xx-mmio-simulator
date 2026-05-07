@@ -32,7 +32,7 @@ impl MmioHandler for MemHandler {
         println!("R {address:08x} --> {value:08x}");
         value
     }
-    fn write(&mut self, address: usize, value: u32) {
+    fn write(&mut self, address: usize, value: u64) {
         let offset = address - self.start_addr;
         println!("W {address:08x} <-- {value:08x}");
         for i in 0..4 {

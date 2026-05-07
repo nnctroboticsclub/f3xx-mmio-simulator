@@ -57,6 +57,7 @@ impl BXCanRegion {
 
         let (tx, mut rx) = mpsc::channel(4);
         tokio::spawn(Self::dc_listener(
+            obj.device.clone(),
             obj.filters.clone(),
             obj.rx_mailboxes.clone(),
             rx,
@@ -67,6 +68,7 @@ impl BXCanRegion {
     }
 
     async fn dc_listener(
+        device: DynDevice,
         filters: Arc<Mutex<CANFilters>>,
         rx_mailboxes: Arc<Mutex<[Mailbox; 2]>>,
         mut rx: mpsc::Receiver<(ChannelID, Vec<u8>)>,
@@ -87,7 +89,7 @@ impl BXCanRegion {
                     FIFOIndex::FIFO0 => 20,
                     FIFOIndex::FIFO1 => 21,
                 };
-                // self.device.fire_interrupt(irqn);
+                device.fire_interrupt(16 + irqn);
             }
         }
     }
@@ -201,7 +203,8 @@ impl MmioHandler for BXCanRegion {
             );
         }
     }
-    fn write(&mut self, address: usize, value: u32) {
+    fn write(&mut self, address: usize, value: u64) {
+        let value = value as u32;
         let offset = address - self.start_addr;
 
         if let Some(msg) = self.tx_mailboxes.write(offset, value) {

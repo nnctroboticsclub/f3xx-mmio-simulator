@@ -54,7 +54,7 @@ impl<'a> Context<'a> {
         }
     }
 
-    fn write_u32_memory(&mut self, address: usize, value: u32) {
+    fn write_u64_memory(&mut self, address: usize, value: u64) {
         self.region.write(address, value);
     }
 
@@ -62,7 +62,7 @@ impl<'a> Context<'a> {
         self.region.read(address)
     }
 
-    pub fn set_operand_value(&mut self, inst: Instruction, op_index: u32, value: u32) {
+    pub fn set_operand_value(&mut self, inst: Instruction, op_index: u32, value: u64) {
         match inst.op_kind(op_index) {
             OpKind::Register => {
                 let reg = inst.op_register(op_index);
@@ -72,7 +72,7 @@ impl<'a> Context<'a> {
                 let address = inst
                     .virtual_address(op_index, 0, |reg, _, _| self.get_register_value(reg))
                     .unwrap() as usize;
-                self.write_u32_memory(address, value);
+                self.write_u64_memory(address, value);
             }
             _ => {
                 panic!(

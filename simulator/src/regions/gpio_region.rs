@@ -220,7 +220,8 @@ impl MmioHandler for GPIORegion {
             panic!("Read from undefined GPIO region at address {:08x}", address);
         }
     }
-    fn write(&mut self, address: usize, value: u32) {
+    fn write(&mut self, address: usize, value: u64) {
+        let value = value as u32;
         let offset = address - self.start_addr;
 
         if offset == 0x00 {

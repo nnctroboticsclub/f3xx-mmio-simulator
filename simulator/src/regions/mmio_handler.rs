@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 pub trait MmioHandler {
     fn read(&self, address: usize) -> u32;
-    fn write(&mut self, address: usize, value: u32);
+    fn write(&mut self, address: usize, value: u64);
     fn contains(&self, address: usize) -> bool;
 }
 

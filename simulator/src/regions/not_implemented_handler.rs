@@ -24,7 +24,7 @@ impl MmioHandler for NotImplementedHandler {
     fn read(&self, address: usize) -> u32 {
         panic!("Read from unimplemented MMIO address {:08x}", address);
     }
-    fn write(&mut self, address: usize, value: u32) {
+    fn write(&mut self, address: usize, value: u64) {
         panic!(
             "Write to unimplemented MMIO address {:08x} with value {:08x}",
             address, value

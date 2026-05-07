@@ -1,27 +1,20 @@
 use std::sync::Arc;
 
 use crate::simulator::DynDevice;
-use crate::vector_table::VectorTable;
+use crate::vector_table::{VectorTable, VectorTablePtr};
 
 use super::MmioHandler;
 
 pub struct BridgeRegion {
     start_addr: usize,
-    vtor: usize,
+    dev: DynDevice,
 }
 impl BridgeRegion {
     fn new(dev: DynDevice, start_addr: usize) -> Self {
-        Self {
-            start_addr,
-            vtor: 0,
-        }
+        Self { start_addr, dev }
     }
     pub fn new_boxed(dev: DynDevice, start_addr: usize) -> Box<Self> {
         Box::new(Self::new(dev, start_addr))
-    }
-
-    pub fn get_registered_vector_table(&self) -> *mut VectorTable {
-        self.vtor as *mut VectorTable
     }
 }
 impl MmioHandler for BridgeRegion {
@@ -33,11 +26,11 @@ impl MmioHandler for BridgeRegion {
                 address
             );
         }
-        let value = self.vtor as usize as u32;
+        let value = self.dev.get_vector_table().as_ptr() as usize as u32;
         println!("R {address:08x} --> {value:08x}");
         value
     }
-    fn write(&mut self, address: usize, value: u32) {
+    fn write(&mut self, address: usize, value: u64) {
         let offset = address - self.start_addr;
         if offset != 0 {
             panic!(
@@ -45,7 +38,8 @@ impl MmioHandler for BridgeRegion {
                 address, value
             );
         }
-        self.vtor = value as usize;
+        self.dev
+            .set_vector_table(VectorTablePtr::new(value as *const VectorTable));
         println!("W {address:08x} <-- {value:08x}");
     }
     fn contains(&self, address: usize) -> bool {

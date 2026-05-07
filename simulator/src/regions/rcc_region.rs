@@ -207,7 +207,8 @@ impl MmioHandler for RCCRegion {
         };
         value
     }
-    fn write(&mut self, address: usize, value: u32) {
+    fn write(&mut self, address: usize, value: u64) {
+        let value = value as u32;
         let offset = address - self.start_addr;
 
         let original_value = self.mem[offset / 4];

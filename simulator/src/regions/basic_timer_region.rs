@@ -63,7 +63,7 @@ impl MmioHandler for BasicTimerRegion {
             address
         );
     }
-    fn write(&mut self, address: usize, value: u32) {
+    fn write(&mut self, address: usize, value: u64) {
         let offset = address - self.start_addr;
 
         if offset == 0x00 {
@@ -83,7 +83,7 @@ impl MmioHandler for BasicTimerRegion {
         }
 
         if offset == 0x2C {
-            self.auto_reload = value;
+            self.auto_reload = value as u32;
             return;
         }
 

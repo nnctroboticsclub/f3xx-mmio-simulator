@@ -97,30 +97,30 @@ pub extern "C" fn mmio_segv_handler(
 
     match inst.mnemonic() {
         Mnemonic::Or => {
-            let value = ctx.get_operand_value(0, &inst).unwrap() as u32;
-            let operand_value = ctx.get_operand_value(1, &inst).unwrap() as u32;
+            let value = ctx.get_operand_value(0, &inst).unwrap();
+            let operand_value = ctx.get_operand_value(1, &inst).unwrap();
             let new_value = value | operand_value;
             ctx.set_operand_value(inst, 0, new_value);
         }
         Mnemonic::Xor => {
-            let value = ctx.get_operand_value(0, &inst).unwrap() as u32;
-            let operand_value = ctx.get_operand_value(1, &inst).unwrap() as u32;
+            let value = ctx.get_operand_value(0, &inst).unwrap();
+            let operand_value = ctx.get_operand_value(1, &inst).unwrap();
             let new_value = value ^ operand_value;
             ctx.set_operand_value(inst, 0, new_value);
         }
         Mnemonic::And => {
-            let op0 = ctx.get_operand_value(0, &inst).unwrap() as u32;
-            let op1 = ctx.get_operand_value(1, &inst).unwrap() as u32;
+            let op0 = ctx.get_operand_value(0, &inst).unwrap();
+            let op1 = ctx.get_operand_value(1, &inst).unwrap();
             let new_value = op0 & op1;
             ctx.set_operand_value(inst, 0, new_value);
         }
         Mnemonic::Mov => {
-            let value = ctx.get_operand_value(1, &inst).unwrap() as u32;
+            let value = ctx.get_operand_value(1, &inst).unwrap();
             ctx.set_operand_value(inst, 0, value);
         }
         Mnemonic::Test => {
-            let value = ctx.get_operand_value(0, &inst).unwrap() as u32;
-            let operand_value = ctx.get_operand_value(1, &inst).unwrap() as u32;
+            let value = ctx.get_operand_value(0, &inst).unwrap();
+            let operand_value = ctx.get_operand_value(1, &inst).unwrap();
             let new_value = value & operand_value;
 
             let flags = &mut mcontext.gregs[libc::REG_EFL as usize];

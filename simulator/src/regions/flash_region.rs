@@ -43,7 +43,7 @@ impl MmioHandler for FlashRegion {
         println!("R {address:08x} --> {value:08x}");
         value
     }
-    fn write(&mut self, address: usize, value: u32) {
+    fn write(&mut self, address: usize, value: u64) {
         let offset = address - self.start_addr;
         println!("W {address:08x} <-- {value:08x}");
         if offset == 0x00 {
