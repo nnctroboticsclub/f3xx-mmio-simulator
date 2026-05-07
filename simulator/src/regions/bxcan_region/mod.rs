@@ -77,18 +77,21 @@ impl BXCanRegion {
             let msg = CANMessage::from(msg);
             let fifo = filters.lock().unwrap().route_message(msg.get_id(), true);
             if let Some(fifo) = fifo {
-                let mut mailboxes = rx_mailboxes.lock().unwrap();
-                let mailbox = if fifo == FIFOIndex::FIFO0 {
-                    &mut mailboxes[0]
-                } else {
-                    &mut mailboxes[1]
-                };
-                mailbox.store_message(msg);
-
                 let irqn = match fifo {
                     FIFOIndex::FIFO0 => 20,
                     FIFOIndex::FIFO1 => 21,
                 };
+
+                {
+                    let mut mailboxes = rx_mailboxes.lock().unwrap();
+                    let mailbox = if fifo == FIFOIndex::FIFO0 {
+                        &mut mailboxes[0]
+                    } else {
+                        &mut mailboxes[1]
+                    };
+                    mailbox.store_message(msg);
+                }
+
                 device.fire_interrupt(16 + irqn);
             }
         }
@@ -147,6 +150,13 @@ impl MmioHandler for BXCanRegion {
         }
         if offset == 0x004 {
             return self.encode_msr();
+        }
+        if offset == 0x00C {
+            // Release FIFO 0 out: Always 0 (no FIFO implemented)
+            // Overrun FIFO 0: Always 0 (no FIFO implemented)
+            // Full FIFO 0: Always 0 (no FIFO implemented)
+            // Pending FIFO0: Always 0
+            return 0;
         }
         if let Some(value) = self.tx_mailboxes.read(offset) {
             return value;
@@ -245,6 +255,10 @@ impl MmioHandler for BXCanRegion {
                 );
             }
 
+            return;
+        }
+
+        if offset == 0x00C {
             return;
         }
 
