@@ -37,6 +37,7 @@ impl BasicTimerRegion {
         value
     }
 }
+
 impl MmioHandler for BasicTimerRegion {
     fn read(&self, address: usize) -> u32 {
         let offset = address - self.start_addr;

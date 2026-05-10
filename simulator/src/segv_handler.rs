@@ -6,6 +6,7 @@ use nix::libc::{self, mcontext_t};
 
 use crate::{
     context::{iced_register_to_libc_reg, Context},
+    runtime::get_runtime,
     simulator::SIMULATOR,
 };
 
@@ -63,7 +64,7 @@ fn diagnose_inst(mcontext: &mcontext_t, inst: Instruction) {
     }
 }
 
-pub extern "C" fn mmio_segv_handler(
+async fn segv_handler(
     _signum: libc::c_int,
     info: *mut libc::siginfo_t,
     context: *mut libc::c_void,
@@ -77,14 +78,19 @@ pub extern "C" fn mmio_segv_handler(
         .get()
         .expect("Simulator not initialized")
         .lock()
-        .expect("Failed to lock the simulator");
+        .unwrap();
     let mut simulator = simulator.borrow_mut();
-    let handler = simulator.lookup_handler(address);
-    if handler.is_none() {
-        eprintln!("Segmentation fault at address {address:#x} (PC: {pc:?}) with no handler found");
-        reraise_as_native_segv();
-    }
-    let handler = handler.unwrap();
+
+    let handler = {
+        let handler = simulator.lookup_handler(address);
+        if handler.is_none() {
+            eprintln!(
+                "Segmentation fault at address {address:#x} (PC: {pc:?}) with no handler found"
+            );
+            reraise_as_native_segv();
+        }
+        handler.unwrap()
+    };
 
     let mut decoder = Decoder::new(
         64,
@@ -156,4 +162,13 @@ pub extern "C" fn mmio_segv_handler(
     }
 
     mcontext.gregs[libc::REG_RIP as usize] += inst.len() as i64;
+}
+
+pub extern "C" fn mmio_segv_handler(
+    signum: libc::c_int,
+    info: *mut libc::siginfo_t,
+    context: *mut libc::c_void,
+) {
+    let future = segv_handler(signum, info, context);
+    get_runtime().block_on(future);
 }

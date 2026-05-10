@@ -77,7 +77,7 @@ impl CANFilters {
                 value |= 1 << i;
             }
         }
-        return value;
+        value
     }
 
     fn write_mode_register(&mut self, value: u32) {
@@ -98,7 +98,7 @@ impl CANFilters {
                 value |= 1 << i;
             }
         }
-        return value;
+        value
     }
 
     fn write_scale_register(&mut self, value: u32) {
@@ -125,7 +125,7 @@ impl CANFilters {
                 value |= 1 << i;
             }
         }
-        return value;
+        value
     }
 
     fn write_filter_assignment_register(&mut self, value: u32) {
@@ -152,7 +152,7 @@ impl CANFilters {
                 value |= 1 << i;
             }
         }
-        return value;
+        value
     }
 
     fn write_activation_register(&mut self, value: u32) {
@@ -181,12 +181,11 @@ impl CANFilters {
         }
 
         let filter = self.filters[filter_id];
-        let value = match bank_part {
+        match bank_part {
             0 => filter.bank0,
             1 => filter.bank1,
             _ => unreachable!(),
-        };
-        return value;
+        }
     }
 
     fn write_bank_register(&mut self, offset: usize, value: u32) {
@@ -234,7 +233,7 @@ impl CANFilters {
             return true;
         }
 
-        if 0x40 <= offset && offset <= 0xAC {
+        if (0x40..=0xAC).contains(&offset) {
             self.write_bank_register(offset, value);
             return true;
         }
@@ -259,8 +258,8 @@ impl CANFilters {
             return Some(self.encode_activation_register());
         }
 
-        if 0x40 <= offset && offset <= 0xAC {
-            return Some(self.encode_bank_register(offset - 0x00));
+        if (0x40..=0xAC).contains(&offset) {
+            return Some(self.encode_bank_register(offset));
         }
 
         None
@@ -287,12 +286,10 @@ impl CANFilters {
                 } else {
                     0x1FFFFFFF
                 }
+            } else if let CANFilterType::Mask = filter.filter_type {
+                filter.bank1 & 0x7FF
             } else {
-                if let CANFilterType::Mask = filter.filter_type {
-                    filter.bank1 & 0x7FF
-                } else {
-                    0x7FF
-                }
+                0x7FF
             };
             if (id_masked ^ filter_id_masked) & mask == 0 {
                 return Some(filter.fifo_assignment);

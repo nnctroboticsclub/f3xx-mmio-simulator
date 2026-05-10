@@ -12,7 +12,7 @@ pub struct TXMailbox {
 impl TXMailbox {
     pub fn new() -> Self {
         Self {
-            mailboxes: [Mailbox::new(), Mailbox::new(), Mailbox::new()],
+            mailboxes: [Mailbox::default(), Mailbox::default(), Mailbox::default()],
             last_send_mailbox: 0,
         }
     }
@@ -34,7 +34,7 @@ impl TXMailbox {
                 0
             };
         }
-        return tsr;
+        tsr
     }
     pub fn read(&self, offset: usize) -> Option<u32> {
         if offset == 0x008 {
@@ -144,6 +144,6 @@ impl TXMailbox {
             self.mailboxes[2].write_tdhr(value);
         }
 
-        return None;
+        None
     }
 }

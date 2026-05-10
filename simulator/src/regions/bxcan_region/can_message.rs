@@ -21,13 +21,13 @@ impl CANMessage {
     }
 }
 
-impl Into<Vec<u8>> for CANMessage {
-    fn into(self) -> Vec<u8> {
+impl From<CANMessage> for Vec<u8> {
+    fn from(val: CANMessage) -> Self {
         let mut v = Vec::new();
-        v.extend_from_slice(&self.id.to_le_bytes());
-        v.push(self.dlc);
-        v.extend_from_slice(&self.data);
-        return v;
+        v.extend_from_slice(&val.id.to_le_bytes());
+        v.push(val.dlc);
+        v.extend_from_slice(&val.data);
+        v
     }
 }
 
@@ -37,6 +37,6 @@ impl From<Vec<u8>> for CANMessage {
         let dlc = v[4];
         let mut data = [0u8; 8];
         data.copy_from_slice(&v[5..13]);
-        return Self { id, data, dlc };
+        Self { id, data, dlc }
     }
 }

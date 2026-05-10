@@ -1,6 +1,6 @@
 use crate::regions::bxcan_region::can_message::CANMessage;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct Mailbox {
     id: u32,
     ide: bool,
@@ -12,23 +12,12 @@ pub struct Mailbox {
 }
 
 impl Mailbox {
-    pub fn new() -> Self {
-        Self {
-            id: 0,
-            ide: false,
-            rtr: false,
-            dlc: 0,
-            data: [0; 8],
-            after_sent: false,
-        }
-    }
-
     pub fn encode_tir(&self) -> u32 {
-        0 | if self.ide {
+        (if self.ide {
             (self.id & 0x1FFFFFFF) << 3 | 0x4
         } else {
             (self.id & 0x7FF) << 21 | 0x4
-        } | if self.rtr { 0x2 } else { 0 }
+        }) | if self.rtr { 0x2 } else { 0 }
     }
 
     pub fn encode_tdtr(&self) -> u32 {
@@ -104,8 +93,8 @@ impl Mailbox {
     }
 }
 
-impl Into<CANMessage> for Mailbox {
-    fn into(self) -> CANMessage {
-        CANMessage::new(self.id, self.data, self.dlc)
+impl From<Mailbox> for CANMessage {
+    fn from(val: Mailbox) -> Self {
+        CANMessage::new(val.id, val.data, val.dlc)
     }
 }

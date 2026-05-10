@@ -40,9 +40,9 @@ impl From<u32> for GPIOOutputSpeed {
     }
 }
 
-impl Into<u32> for GPIOOutputSpeed {
-    fn into(self) -> u32 {
-        match self {
+impl From<GPIOOutputSpeed> for u32 {
+    fn from(val: GPIOOutputSpeed) -> Self {
+        match val {
             GPIOOutputSpeed::Low0 => 0b00,
             GPIOOutputSpeed::Low1 => 0b01,
             GPIOOutputSpeed::Medium => 0b10,
@@ -71,9 +71,9 @@ impl From<u32> for GPIOPull {
     }
 }
 
-impl Into<u32> for GPIOPull {
-    fn into(self) -> u32 {
-        match self {
+impl From<GPIOPull> for u32 {
+    fn from(val: GPIOPull) -> Self {
+        match val {
             GPIOPull::None => 0b00,
             GPIOPull::PullUp => 0b01,
             GPIOPull::PullDown => 0b10,
@@ -159,6 +159,7 @@ impl GPIORegion {
         Box::new(region)
     }
 }
+
 impl MmioHandler for GPIORegion {
     fn read(&self, address: usize) -> u32 {
         let offset = address - self.start_addr;
@@ -252,11 +253,6 @@ impl MmioHandler for GPIORegion {
                     0b10 => GPIOPull::PullDown,
                     _ => unreachable!(),
                 };
-            }
-        } else if offset == 0x10 {
-            for (pin, i) in self.pins.iter_mut().zip(0..) {
-                let output_bit = (value >> i) & 0b1;
-                pin.write_output(output_bit != 0);
             }
         } else if offset == 0x14 {
             for (pin, i) in self.pins.iter_mut().zip(0..) {

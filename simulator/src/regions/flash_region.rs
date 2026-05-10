@@ -21,13 +21,11 @@ impl FlashRegion {
         Box::new(Self::new(dev, start_addr))
     }
 }
+
 impl MmioHandler for FlashRegion {
     fn read(&self, address: usize) -> u32 {
         let offset = address - self.start_addr;
-        let defined_behavior = match offset {
-            0x00..=0x03 => true,
-            _ => false,
-        };
+        let defined_behavior = matches!(offset, 0x00..=0x03);
         if !defined_behavior {
             panic!(
                 "Read from undefined flash region at address {:08x}",

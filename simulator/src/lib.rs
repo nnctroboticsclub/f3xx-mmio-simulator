@@ -1,4 +1,5 @@
-use std::{cell::RefCell, sync::Mutex};
+use std::cell::RefCell;
+use std::sync::Mutex;
 
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
 

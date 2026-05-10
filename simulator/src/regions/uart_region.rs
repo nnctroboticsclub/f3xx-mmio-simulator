@@ -23,15 +23,16 @@ impl UARTRegion {
         Box::new(Self::new(dev, start_addr, peripheral_index))
     }
     fn _is_transmitter_enabled(&self) -> bool {
-        return self.cr1 & 0x8 != 0;
+        self.cr1 & 0x8 != 0
     }
     fn _is_receiver_enabled(&self) -> bool {
-        return self.cr1 & 0x4 != 0;
+        self.cr1 & 0x4 != 0
     }
     fn _is_driver_enabled(&self) -> bool {
-        return self.cr1 & 0x1 != 0;
+        self.cr1 & 0x1 != 0
     }
 }
+
 impl MmioHandler for UARTRegion {
     fn read(&self, address: usize) -> u32 {
         let offset = address - self.start_addr;

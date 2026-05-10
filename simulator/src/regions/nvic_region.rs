@@ -30,6 +30,7 @@ impl NVICRegion {
         Box::new(Self::new(dev, start_addr))
     }
 }
+
 impl MmioHandler for NVICRegion {
     fn read(&self, address: usize) -> u32 {
         let offset = address - self.start_addr;
@@ -65,7 +66,7 @@ impl MmioHandler for NVICRegion {
             }
             return;
         }
-        if 0x80 <= offset && offset <= 0x100 {
+        if (0x80..=0x100).contains(&offset) {
             let reg_index = (offset & 0x7F) / 4;
             for i in 0..32 {
                 let int_index = reg_index * 32 + i;
@@ -77,7 +78,7 @@ impl MmioHandler for NVICRegion {
             }
             return;
         }
-        if 0x300 <= offset && offset <= 0x400 {
+        if (0x300..=0x400).contains(&offset) {
             let reg_index = (offset & 0xFF) / 4;
             for i in 0..4 {
                 let int_index = reg_index * 4 + i;

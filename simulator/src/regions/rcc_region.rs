@@ -5,13 +5,13 @@ use super::MmioHandler;
 const RCC_REGION_SIZE: usize = 0x24;
 
 enum PLLSource {
-    HSIDiv2,
-    HSE(u32), // prescaler
+    HsiDiv2,
+    Hse(u32), // prescaler
 }
 enum SysClockSource {
-    HSI,
-    HSE,
-    PLL,
+    Hsi,
+    Hse,
+    Pll,
 }
 pub struct RCCRegion {
     start_addr: usize,
@@ -32,12 +32,12 @@ impl RCCRegion {
         Self {
             start_addr,
             mem,
-            pll_source: PLLSource::HSIDiv2,
+            pll_source: PLLSource::HsiDiv2,
             pll_multiplier: 2,
             ahb_prescaler: 1,
             apb1_prescaler: 1,
             apb2_prescaler: 1,
-            sysclk_source: SysClockSource::HSI,
+            sysclk_source: SysClockSource::Hsi,
         }
     }
     pub fn new_boxed(dev: DynDevice, start_addr: usize) -> Box<Self> {
@@ -62,33 +62,33 @@ impl RCCRegion {
 
     fn get_pll_hse_prediv_value(&self) -> Option<u32> {
         match self.pll_source {
-            PLLSource::HSIDiv2 => None,
-            PLLSource::HSE(n) => Some(n - 1),
+            PLLSource::HsiDiv2 => None,
+            PLLSource::Hse(n) => Some(n - 1),
         }
     }
 
     fn set_pll_hse_prediv_value(&mut self, value: u32) {
         match self.pll_source {
-            PLLSource::HSIDiv2 => {
+            PLLSource::HsiDiv2 => {
                 panic!("Cannot set HSE predivider when PLL source is HSI/2");
             }
-            PLLSource::HSE(_) => {
-                self.pll_source = PLLSource::HSE(value + 1);
+            PLLSource::Hse(_) => {
+                self.pll_source = PLLSource::Hse(value + 1);
             }
         }
     }
 
     fn get_pll_source(&self) -> u32 {
         match self.pll_source {
-            PLLSource::HSIDiv2 => 0,
-            PLLSource::HSE(_) => 1,
+            PLLSource::HsiDiv2 => 0,
+            PLLSource::Hse(_) => 1,
         }
     }
 
     fn set_pll_source(&mut self, value: u32) {
         match value {
-            0 => self.pll_source = PLLSource::HSIDiv2,
-            1 => self.pll_source = PLLSource::HSE(1), // default to HSE with no predivision
+            0 => self.pll_source = PLLSource::HsiDiv2,
+            1 => self.pll_source = PLLSource::Hse(1), // default to HSE with no predivision
             _ => panic!("{}", "Invalid PLL source value: {value}"),
         }
     }
@@ -164,20 +164,21 @@ impl RCCRegion {
     }
     fn get_sysclk_source(&self) -> u32 {
         match self.sysclk_source {
-            SysClockSource::HSI => 0,
-            SysClockSource::HSE => 1,
-            SysClockSource::PLL => 2,
+            SysClockSource::Hsi => 0,
+            SysClockSource::Hse => 1,
+            SysClockSource::Pll => 2,
         }
     }
     fn set_sysclk_source(&mut self, value: u32) {
         self.sysclk_source = match value {
-            0 => SysClockSource::HSI,
-            1 => SysClockSource::HSE,
-            2 => SysClockSource::PLL,
+            0 => SysClockSource::Hsi,
+            1 => SysClockSource::Hse,
+            2 => SysClockSource::Pll,
             _ => panic!("{}", "Invalid system clock source value: {value}"),
         }
     }
 }
+
 impl MmioHandler for RCCRegion {
     fn read(&self, address: usize) -> u32 {
         let offset = address - self.start_addr;

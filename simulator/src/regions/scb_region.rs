@@ -16,6 +16,7 @@ impl SCBRegion {
         Box::new(Self::new(dev, start_addr))
     }
 }
+
 impl MmioHandler for SCBRegion {
     fn read(&self, address: usize) -> u32 {
         let offset = address - self.start_addr;

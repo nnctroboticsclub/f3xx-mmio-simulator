@@ -8,7 +8,7 @@ mod filter_scale;
 mod mailbox;
 mod mailboxes;
 
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 
 use super::MmioHandler;
 use crate::{
@@ -20,7 +20,6 @@ use can_filter::CANFilters;
 use can_state::CANState;
 use devconsole::ChannelID;
 use mailbox::Mailbox;
-use tokio::sync::mpsc;
 
 const BXCAN_REGION_SIZE: usize = 0x2B0;
 
@@ -40,7 +39,7 @@ pub struct BXCanRegion {
 }
 impl BXCanRegion {
     async fn new(dev: DynDevice, start_addr: usize) -> Self {
-        let channel = dev.open_channel("can".to_string()).await;
+        let channel = dev.open_channel("can".to_string());
 
         let obj = Self {
             device: dev.clone(),
@@ -50,30 +49,31 @@ impl BXCanRegion {
             bit_timing: BitTiming::new(),
             filters: Arc::new(Mutex::new(CANFilters::new())),
             tx_mailboxes: TXMailbox::new(),
-            rx_mailboxes: Arc::new(Mutex::new([Mailbox::new(); 2])),
+            rx_mailboxes: Arc::new(Mutex::new([Mailbox::default(); 2])),
             fifo0_pending_int_enable: false,
             fifo1_pending_int_enable: false,
         };
 
-        let (tx, rx) = mpsc::channel(4);
-        tokio::spawn(Self::dc_listener(
-            obj.device.clone(),
-            obj.filters.clone(),
-            obj.rx_mailboxes.clone(),
-            rx,
-        ));
+        let (tx, rx) = mpsc::channel();
+        {
+            let dev = obj.device.clone();
+            let filters = obj.filters.clone();
+            let rx_mailboxes = obj.rx_mailboxes.clone();
+            std::thread::spawn(|| Self::dc_listener(dev, filters, rx_mailboxes, rx));
+        }
 
-        dev.listen(channel, None, Some(tx)).await;
+        dev.listen(channel, None, Some(tx));
         obj
     }
 
-    async fn dc_listener(
+    fn dc_listener(
         device: DynDevice,
         filters: Arc<Mutex<CANFilters>>,
         rx_mailboxes: Arc<Mutex<[Mailbox; 2]>>,
-        mut rx: mpsc::Receiver<(ChannelID, Vec<u8>)>,
+        rx: mpsc::Receiver<(ChannelID, Vec<u8>)>,
     ) {
-        while let Some((_cid, msg)) = rx.recv().await {
+        loop {
+            let (_cid, msg) = rx.recv().unwrap();
             let msg = CANMessage::from(msg);
             let fifo = filters.lock().unwrap().route_message(msg.get_id(), true);
             if let Some(fifo) = fifo {
@@ -112,7 +112,7 @@ impl BXCanRegion {
             mcr |= 0x1;
         }
 
-        return mcr;
+        mcr
     }
 
     fn encode_msr(&self) -> u32 {
@@ -125,7 +125,7 @@ impl BXCanRegion {
             msr |= 0x1;
         }
 
-        return msr;
+        msr
     }
 
     fn encode_ier(&self) -> u32 {
@@ -138,9 +138,10 @@ impl BXCanRegion {
             ier |= 0x10;
         }
 
-        return ier;
+        ier
     }
 }
+
 impl MmioHandler for BXCanRegion {
     fn read(&self, address: usize) -> u32 {
         let offset = address - self.start_addr;
@@ -197,7 +198,7 @@ impl MmioHandler for BXCanRegion {
             return self.rx_mailboxes.lock().unwrap()[1].encode_tdhr();
         }
 
-        if 0x200 <= offset && offset <= 0x2B0 {
+        if (0x200..=0x2B0).contains(&offset) {
             return self
                 .filters
                 .lock()
@@ -218,9 +219,9 @@ impl MmioHandler for BXCanRegion {
         let offset = address - self.start_addr;
 
         if let Some(msg) = self.tx_mailboxes.write(offset, value) {
-            self.device.send_bin_blocking(self.can_channel, msg.into());
+            self.device.send_bin(self.can_channel, msg.into());
         }
-        if 0x180 <= offset && offset <= 0x1B0 {
+        if (0x180..=0x1B0).contains(&offset) {
             return;
         }
 
@@ -306,7 +307,7 @@ impl MmioHandler for BXCanRegion {
             return;
         }
 
-        if 0x200 <= offset && offset <= 0x2B0 {
+        if (0x200..=0x2B0).contains(&offset) {
             self.filters
                 .lock()
                 .unwrap()

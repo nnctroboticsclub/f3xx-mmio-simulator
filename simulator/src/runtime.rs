@@ -13,5 +13,5 @@ pub fn get_runtime() -> Handle {
             .expect("Failed to create Tokio runtime")
     });
 
-    return rt.handle().clone();
+    rt.handle().clone()
 }

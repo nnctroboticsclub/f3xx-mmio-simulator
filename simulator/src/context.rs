@@ -66,7 +66,7 @@ impl<'a> Context<'a> {
         match inst.op_kind(op_index) {
             OpKind::Register => {
                 let reg = inst.op_register(op_index);
-                self.write_register(reg, value as u64);
+                self.write_register(reg, value);
             }
             OpKind::Memory => {
                 let address = inst

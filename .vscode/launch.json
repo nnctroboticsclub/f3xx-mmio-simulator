@@ -15,7 +15,7 @@
     {
       "name": "simulated CANMonitor",
       "type": "lldb",
-      "request": "attach",
+      "request": "launch",
       "program": "${workspaceRoot}/build/CANMonitor/CANMonitor",
     }
   ]

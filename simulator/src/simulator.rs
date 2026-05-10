@@ -1,31 +1,57 @@
 use std::{
     cell::RefCell,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{mpsc as std_mpsc, Arc, Mutex, OnceLock},
 };
+use tokio::sync::mpsc as tokio_mpsc;
 
 use devconsole::{ChannelID, DCClient};
-use tokio::sync::mpsc;
 
-use crate::{runtime::get_runtime, vector_table::VectorTablePtr};
+use crate::vector_table::VectorTablePtr;
 
 use super::DynMMIOHandler;
 
-struct Device {
-    devconsole_client: DCClient,
-    vector_table: VectorTablePtr,
-    active_interrupt: Option<u32>,
+enum ThreadRequest {
+    OpenChannel(String),
+    // Send(ChannelID, String),
+    SendBin(ChannelID, Vec<u8>),
+    Listen(
+        ChannelID,
+        Option<std_mpsc::Sender<(ChannelID, String)>>,
+        Option<std_mpsc::Sender<(ChannelID, Vec<u8>)>>,
+    ),
 }
 
-impl Device {
-    pub async fn new(url: &str) -> Self {
-        Self {
-            devconsole_client: DCClient::new(url)
-                .await
-                .expect("Failed to connect to the devconsole server"),
-            vector_table: VectorTablePtr::new_null(),
-            active_interrupt: None,
+enum ThreadResponse {
+    OpenChannelResult(ChannelID),
+}
+
+struct Device {
+    vector_table: VectorTablePtr,
+    active_interrupt: Option<u32>,
+
+    request_tx: std_mpsc::Sender<ThreadRequest>,
+    response_rx: std_mpsc::Receiver<ThreadResponse>,
+}
+
+async fn copy_mpsc_to_std<T: Send + 'static>(
+    std_tx: std_mpsc::Sender<T>,
+    mut tokio_rx: tokio_mpsc::Receiver<T>,
+) {
+    while let Some(value) = tokio_rx.recv().await {
+        if std_tx.send(value).is_err() {
+            break;
         }
     }
+}
+
+async fn mpsc_rx_to_tokio<T: Send + 'static>(std_tx: std_mpsc::Sender<T>) -> tokio_mpsc::Sender<T> {
+    type TokioTx<T> = tokio_mpsc::Sender<T>;
+    type TokioRx<T> = tokio_mpsc::Receiver<T>;
+
+    let (tokio_tx, tokio_rx): (TokioTx<T>, TokioRx<T>) = tokio_mpsc::channel(100);
+    tokio::spawn(copy_mpsc_to_std(std_tx, tokio_rx));
+
+    tokio_tx
 }
 
 #[derive(Clone)]
@@ -33,59 +59,111 @@ pub struct DynDevice(Arc<Mutex<Device>>);
 
 impl DynDevice {
     pub async fn new(url: &str) -> Self {
-        Self(Arc::new(Mutex::new(Device::new(url).await)))
+        let (request_tx, request_rx) = std_mpsc::channel();
+        let (response_tx, response_rx) = std_mpsc::channel();
+        let dev = Device {
+            vector_table: VectorTablePtr::new_null(),
+            active_interrupt: None,
+            request_tx,
+            response_rx,
+        };
+        let obj = Self(Arc::new(Mutex::new(dev)));
+        {
+            let url = url.to_string();
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                rt.block_on(Self::task(url, request_rx, response_tx));
+            });
+        }
+        obj
     }
 
-    pub async fn open_channel(&self, channel_name: String) -> ChannelID {
+    async fn task(
+        url: String,
+        request_rx: std_mpsc::Receiver<ThreadRequest>,
+        response_tx: std_mpsc::Sender<ThreadResponse>,
+    ) {
+        let mut dc_client = DCClient::new(&url).await.unwrap();
+
+        loop {
+            match request_rx.recv() {
+                Ok(ThreadRequest::OpenChannel(channel_name)) => {
+                    let channel_id = dc_client.open(channel_name).await.unwrap();
+                    response_tx
+                        .send(ThreadResponse::OpenChannelResult(channel_id))
+                        .unwrap();
+                }
+                /* Ok(ThreadRequest::Send(channel_id, data)) => {
+                    dc_client.send(channel_id, data).await.unwrap();
+                } */
+                Ok(ThreadRequest::SendBin(channel_id, data)) => {
+                    dc_client.send_bin(channel_id, data).await.unwrap();
+                }
+                Ok(ThreadRequest::Listen(channel_id, s_tx_txt, s_tx_bin)) => {
+                    let t_tx_txt = if let Some(s_tx_txt) = s_tx_txt {
+                        Some(mpsc_rx_to_tokio(s_tx_txt).await)
+                    } else {
+                        None
+                    };
+                    let t_tx_bin = if let Some(s_tx_bin) = s_tx_bin {
+                        Some(mpsc_rx_to_tokio(s_tx_bin).await)
+                    } else {
+                        None
+                    };
+
+                    dc_client
+                        .listen(channel_id, t_tx_txt, t_tx_bin)
+                        .await
+                        .unwrap();
+                }
+                Err(_) => break,
+            }
+        }
+    }
+
+    pub fn open_channel(&self, channel_name: String) -> ChannelID {
         self.0
             .lock()
             .unwrap()
-            .devconsole_client
-            .open(channel_name)
-            .await
-            .unwrap()
+            .request_tx
+            .send(ThreadRequest::OpenChannel(channel_name))
+            .unwrap();
+
+        let ThreadResponse::OpenChannelResult(channel_id) =
+            self.0.lock().unwrap().response_rx.recv().unwrap();
+        channel_id
     }
 
-    pub async fn _send(&self, channel_id: ChannelID, data: String) {
+    /* pub fn _send(&self, channel_id: ChannelID, data: String) {
         self.0
             .lock()
             .unwrap()
-            .devconsole_client
-            .send(channel_id, data)
-            .await
+            .request_tx
+            .send(ThreadRequest::Send(channel_id, data))
+            .unwrap();
+    } */
+    pub fn send_bin(&self, channel_id: ChannelID, data: Vec<u8>) {
+        self.0
+            .lock()
+            .unwrap()
+            .request_tx
+            .send(ThreadRequest::SendBin(channel_id, data))
             .unwrap();
     }
-
-    pub fn _send_blocking(&self, channel_id: ChannelID, data: String) {
-        get_runtime().block_on(self._send(channel_id, data))
-    }
-
-    pub async fn send_bin(&self, channel_id: ChannelID, data: Vec<u8>) {
-        self.0
-            .lock()
-            .unwrap()
-            .devconsole_client
-            .send_bin(channel_id, data)
-            .await
-            .unwrap();
-    }
-
-    pub fn send_bin_blocking(&self, channel_id: ChannelID, data: Vec<u8>) {
-        get_runtime().block_on(self.send_bin(channel_id, data))
-    }
-
-    pub async fn listen(
+    pub fn listen(
         &self,
         channel_id: ChannelID,
-        tx: Option<mpsc::Sender<(ChannelID, String)>>,
-        tx_bin: Option<mpsc::Sender<(ChannelID, Vec<u8>)>>,
+        tx: Option<std_mpsc::Sender<(ChannelID, String)>>,
+        tx_bin: Option<std_mpsc::Sender<(ChannelID, Vec<u8>)>>,
     ) {
         self.0
             .lock()
             .unwrap()
-            .devconsole_client
-            .listen(channel_id, tx, tx_bin)
-            .await
+            .request_tx
+            .send(ThreadRequest::Listen(channel_id, tx, tx_bin))
             .unwrap();
     }
 

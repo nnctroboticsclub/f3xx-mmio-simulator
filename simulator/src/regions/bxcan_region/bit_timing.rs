@@ -33,7 +33,7 @@ impl BitTiming {
         btr |= ((self.ts2 - 1) as u32) << 20;
         btr |= (self.brp - 1) as u32;
 
-        return btr;
+        btr
     }
 
     pub fn write(&mut self, value: u32) {
