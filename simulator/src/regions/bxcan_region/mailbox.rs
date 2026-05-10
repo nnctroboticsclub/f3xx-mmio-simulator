@@ -102,10 +102,6 @@ impl Mailbox {
             self.data[i] = if i < data.len() { data[i] } else { 0 };
         }
     }
-
-    pub fn to_message(&self) -> CANMessage {
-        CANMessage::new(self.id, self.data, self.dlc)
-    }
 }
 
 impl Into<CANMessage> for Mailbox {

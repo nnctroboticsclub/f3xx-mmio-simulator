@@ -82,6 +82,20 @@ impl TXMailbox {
     }
 
     pub fn write(&mut self, offset: usize, value: u32) -> Option<CANMessage> {
+        if offset == 0x008 {
+            let abrq1 = (value & 0x00800000) != 0;
+            let abrq2 = (value & 0x00008000) != 0;
+            let abrq3 = (value & 0x00000080) != 0;
+            if abrq1 {
+                self.mailboxes[0].abort();
+            }
+            if abrq2 {
+                self.mailboxes[1].abort();
+            }
+            if abrq3 {
+                self.mailboxes[2].abort();
+            }
+        }
         if offset == 0x180 {
             self.mailboxes[0].write_tir(value);
             if value & 1 != 0 {

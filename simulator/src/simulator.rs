@@ -1,19 +1,12 @@
 use std::{
     cell::RefCell,
     sync::{Arc, Mutex, OnceLock},
-    thread,
 };
 
 use devconsole::{ChannelID, DCClient};
-use tokio::{
-    runtime::{Builder, Handle, Runtime},
-    sync::mpsc,
-};
+use tokio::sync::mpsc;
 
-use crate::{
-    runtime::get_runtime,
-    vector_table::{VectorTable, VectorTablePtr},
-};
+use crate::{runtime::get_runtime, vector_table::VectorTablePtr};
 
 use super::DynMMIOHandler;
 
@@ -53,7 +46,7 @@ impl DynDevice {
             .unwrap()
     }
 
-    pub async fn send(&self, channel_id: ChannelID, data: String) {
+    pub async fn _send(&self, channel_id: ChannelID, data: String) {
         self.0
             .lock()
             .unwrap()
@@ -63,8 +56,8 @@ impl DynDevice {
             .unwrap();
     }
 
-    pub fn send_blocking(&self, channel_id: ChannelID, data: String) {
-        get_runtime().block_on(self.send(channel_id, data))
+    pub fn _send_blocking(&self, channel_id: ChannelID, data: String) {
+        get_runtime().block_on(self._send(channel_id, data))
     }
 
     pub async fn send_bin(&self, channel_id: ChannelID, data: Vec<u8>) {
@@ -97,7 +90,7 @@ impl DynDevice {
     }
 
     pub fn get_vector_table(&self) -> VectorTablePtr {
-        self.0.lock().unwrap().vector_table.clone()
+        self.0.lock().unwrap().vector_table
     }
 
     pub fn set_vector_table(&self, vector_table: VectorTablePtr) {
@@ -112,7 +105,7 @@ impl DynDevice {
             .vector_table
             .try_get_handler(irqn as usize)
         {
-            unsafe { std::mem::transmute(handler) }
+            unsafe { std::mem::transmute::<*const (), extern "C" fn()>(handler) }
         } else {
             println!("Vector table is not set");
             println!(
@@ -133,13 +126,12 @@ impl DynDevice {
 }
 
 pub struct Simulator {
-    device: DynDevice,
     handlers: Vec<DynMMIOHandler>,
 }
 
 impl Simulator {
-    pub fn new(device: DynDevice, handlers: Vec<DynMMIOHandler>) -> Self {
-        Self { device, handlers }
+    pub fn new(_device: DynDevice, handlers: Vec<DynMMIOHandler>) -> Self {
+        Self { handlers }
     }
 
     pub fn lookup_handler(&mut self, address: usize) -> Option<&mut DynMMIOHandler> {

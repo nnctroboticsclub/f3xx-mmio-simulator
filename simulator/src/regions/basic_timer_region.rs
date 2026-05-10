@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::simulator::DynDevice;
 
 use super::MmioHandler;
@@ -12,18 +10,16 @@ pub struct BasicTimerRegion {
     auto_reload_enabled: bool,
     auto_reload: u32,
     counter_enabled: bool,
-    counter: u32,
     update_interrupt_enabled: bool,
 }
 impl BasicTimerRegion {
-    fn new(dev: DynDevice, start_addr: usize) -> Self {
+    fn new(_dev: DynDevice, start_addr: usize) -> Self {
         Self {
             start_addr,
             prescaler: 1,
             auto_reload_enabled: false,
             auto_reload: 0,
             counter_enabled: false,
-            counter: 0,
             update_interrupt_enabled: false,
         }
     }

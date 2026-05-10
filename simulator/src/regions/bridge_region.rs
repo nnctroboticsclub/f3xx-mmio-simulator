@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::simulator::DynDevice;
 use crate::vector_table::{VectorTable, VectorTablePtr};
 

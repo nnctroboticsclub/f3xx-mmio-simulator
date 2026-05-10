@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::simulator::DynDevice;
 
 use super::MmioHandler;
@@ -13,7 +11,7 @@ pub struct UARTRegion {
     cr1: u32,
 }
 impl UARTRegion {
-    fn new(dev: DynDevice, start_addr: usize, peripheral_index: u8) -> Self {
+    fn new(_dev: DynDevice, start_addr: usize, peripheral_index: u8) -> Self {
         Self {
             start_addr,
             peripheral_index,
@@ -24,13 +22,13 @@ impl UARTRegion {
     pub fn new_boxed(dev: DynDevice, start_addr: usize, peripheral_index: u8) -> Box<Self> {
         Box::new(Self::new(dev, start_addr, peripheral_index))
     }
-    fn is_transmitter_enabled(&self) -> bool {
+    fn _is_transmitter_enabled(&self) -> bool {
         return self.cr1 & 0x8 != 0;
     }
-    fn is_receiver_enabled(&self) -> bool {
+    fn _is_receiver_enabled(&self) -> bool {
         return self.cr1 & 0x4 != 0;
     }
-    fn is_driver_enabled(&self) -> bool {
+    fn _is_driver_enabled(&self) -> bool {
         return self.cr1 & 0x1 != 0;
     }
 }

@@ -3,9 +3,8 @@ mod bridge_region;
 mod bxcan_region;
 mod flash_region;
 mod gpio_region;
-mod mem_handler;
+
 mod mmio_handler;
-mod not_implemented_handler;
 mod nvic_region;
 mod rcc_region;
 mod scb_region;
@@ -19,7 +18,6 @@ pub use bxcan_region::BXCanRegion;
 pub use flash_region::FlashRegion;
 pub use gpio_region::{GPIOPort, GPIORegion};
 pub use mmio_handler::DynMMIOHandler;
-pub use not_implemented_handler::NotImplementedHandler;
 pub use nvic_region::NVICRegion;
 pub use rcc_region::RCCRegion;
 pub use scb_region::SCBRegion;

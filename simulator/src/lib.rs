@@ -1,10 +1,6 @@
-use std::{
-    cell::RefCell,
-    sync::{Arc, Mutex},
-};
+use std::{cell::RefCell, sync::Mutex};
 
 use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet, Signal};
-use tokio::runtime::Builder;
 
 use crate::{
     regions::{

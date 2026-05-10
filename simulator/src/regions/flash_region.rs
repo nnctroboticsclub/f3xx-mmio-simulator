@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::simulator::DynDevice;
 
 use super::MmioHandler;
@@ -10,7 +8,7 @@ pub struct FlashRegion {
     mem: [u8; FLASH_REGION_SIZE],
 }
 impl FlashRegion {
-    fn new(dev: DynDevice, start_addr: usize) -> Self {
+    fn new(_dev: DynDevice, start_addr: usize) -> Self {
         let mut mem = [0; FLASH_REGION_SIZE];
         mem[0] = 0x03;
         mem[0x20] = 0xFF;

@@ -55,7 +55,7 @@ impl BXCanRegion {
             fifo1_pending_int_enable: false,
         };
 
-        let (tx, mut rx) = mpsc::channel(4);
+        let (tx, rx) = mpsc::channel(4);
         tokio::spawn(Self::dc_listener(
             obj.device.clone(),
             obj.filters.clone(),

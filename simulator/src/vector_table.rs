@@ -25,12 +25,6 @@ impl VectorTablePtr {
     pub fn try_get_handler(&self, index: usize) -> Option<*const ()> {
         self.try_as_ref()
             .and_then(|table| table.get(index))
-            .and_then(|entry| {
-                if *entry == std::ptr::null() {
-                    None
-                } else {
-                    Some(*entry)
-                }
-            })
+            .and_then(|entry| if entry.is_null() { None } else { Some(*entry) })
     }
 }

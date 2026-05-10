@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::simulator::DynDevice;
 
 use super::MmioHandler;
@@ -127,14 +125,14 @@ impl GPIOPin {
 
 pub struct GPIORegion {
     start_addr: usize,
-    port: GPIOPort,
+    _port: GPIOPort,
     pins: [GPIOPin; 16],
 }
 impl GPIORegion {
-    fn new(dev: DynDevice, start_addr: usize, port: GPIOPort) -> Self {
+    fn new(_dev: DynDevice, start_addr: usize, port: GPIOPort) -> Self {
         Self {
             start_addr,
-            port,
+            _port: port,
             pins: [GPIOPin::new(); 16],
         }
     }

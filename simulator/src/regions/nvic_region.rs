@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::simulator::DynDevice;
 
 use super::MmioHandler;
@@ -16,10 +14,9 @@ struct InterruptionConfig {
 pub struct NVICRegion {
     start_addr: usize,
     interrupts: [InterruptionConfig; 240],
-    active_interrupt: Option<u8>,
 }
 impl NVICRegion {
-    fn new(dev: DynDevice, start_addr: usize) -> Self {
+    fn new(_dev: DynDevice, start_addr: usize) -> Self {
         Self {
             start_addr,
             interrupts: [InterruptionConfig {
@@ -27,7 +24,6 @@ impl NVICRegion {
                 enabled: false,
                 pending: false,
             }; 240],
-            active_interrupt: None,
         }
     }
     pub fn new_boxed(dev: DynDevice, start_addr: usize) -> Box<Self> {
@@ -38,7 +34,7 @@ impl MmioHandler for NVICRegion {
     fn read(&self, address: usize) -> u32 {
         let offset = address - self.start_addr;
 
-        if 0 <= offset && offset <= 0x100 {
+        if offset <= 0x100 {
             let reg_index = (offset & 0x7F) / 4;
             let mut value = 0;
             for i in 0..32 {

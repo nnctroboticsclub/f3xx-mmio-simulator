@@ -1,12 +1,9 @@
-use std::sync::Arc;
-
 use crate::simulator::DynDevice;
 
 use super::MmioHandler;
 
 const RCC_REGION_SIZE: usize = 0x24;
-const RCC_HSI_CLOCK: u32 = 8_000_000;
-const RCC_HSE_CLOCK: u32 = 8_000_000;
+
 enum PLLSource {
     HSIDiv2,
     HSE(u32), // prescaler
@@ -27,7 +24,7 @@ pub struct RCCRegion {
     sysclk_source: SysClockSource,
 }
 impl RCCRegion {
-    fn new(dev: DynDevice, start_addr: usize) -> Self {
+    fn new(_dev: DynDevice, start_addr: usize) -> Self {
         let mut mem = [0u32; RCC_REGION_SIZE / 4];
         mem[0] = 0x03300083; // PLL, HSE, HSI ON
         mem[5] = 0x00000014;
@@ -92,7 +89,7 @@ impl RCCRegion {
         match value {
             0 => self.pll_source = PLLSource::HSIDiv2,
             1 => self.pll_source = PLLSource::HSE(1), // default to HSE with no predivision
-            _ => panic!("Invalid PLL source value: {value}"),
+            _ => panic!("{}", "Invalid PLL source value: {value}"),
         }
     }
 
@@ -113,7 +110,7 @@ impl RCCRegion {
             5 => 4,
             6 => 8,
             7 => 16,
-            _ => panic!("Invalid APB1 prescaler setting: {value}"),
+            _ => panic!("{}", "Invalid APB1 prescaler setting: {value}"),
         }
     }
 
@@ -134,7 +131,7 @@ impl RCCRegion {
             5 => 4,
             6 => 8,
             7 => 16,
-            _ => panic!("Invalid APB2 prescaler setting: {value}"),
+            _ => panic!("{}", "Invalid APB2 prescaler setting: {value}"),
         }
     }
     fn get_ahb_prescaler_value(&self) -> u32 {
@@ -162,7 +159,7 @@ impl RCCRegion {
             13 => 128,
             14 => 256,
             15 => 512,
-            _ => panic!("Invalid AHB prescaler setting: {value}"),
+            _ => panic!("{}", "Invalid AHB prescaler setting: {value}"),
         }
     }
     fn get_sysclk_source(&self) -> u32 {
@@ -177,7 +174,7 @@ impl RCCRegion {
             0 => SysClockSource::HSI,
             1 => SysClockSource::HSE,
             2 => SysClockSource::PLL,
-            _ => panic!("Invalid system clock source value: {value}"),
+            _ => panic!("{}", "Invalid system clock source value: {value}"),
         }
     }
 }
@@ -199,8 +196,6 @@ impl MmioHandler for RCCRegion {
                 reg
             }
             0x14 | 0x18 | 0x1C => self.mem[offset / 4],
-            0x18 => self.mem[6], // APB2 ENR
-            0x1C => self.mem[7], // APB1 ENR
             _ => {
                 panic!("Read from undefined RCC region at address {:08x}", address);
             }
@@ -231,6 +226,14 @@ impl MmioHandler for RCCRegion {
             if changed_bits & 0x003c0000 != 0 {
                 self.set_pll_multiplier_value((new_value >> 18) & 0xf);
                 changed_bits &= !0x003c0000;
+            }
+            if changed_bits & 0x00020000 != 0 {
+                self.set_pll_hse_prediv_value((new_value >> 17) & 1);
+                changed_bits &= !0x00020000;
+            }
+            if changed_bits & 0x00018000 != 0 {
+                self.set_pll_source((new_value >> 15) & 3);
+                changed_bits &= !0x00018000;
             }
             if changed_bits & 0x00000700 != 0 {
                 let ppre1 = (new_value >> 8) & 0x7;
