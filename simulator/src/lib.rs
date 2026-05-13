@@ -55,7 +55,7 @@ async fn init() {
 
     let sa = SigAction::new(
         SigHandler::SigAction(mmio_segv_handler),
-        SaFlags::SA_NODEFER | SaFlags::SA_SIGINFO,
+        SaFlags::SA_SIGINFO,
         SigSet::empty(),
     );
     unsafe {

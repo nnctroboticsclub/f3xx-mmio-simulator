@@ -1,11 +1,8 @@
-use iced_x86::{
-    Decoder, Formatter, GasFormatter, Instruction, InstructionInfoFactory, Mnemonic, OpKind,
-    Register,
-};
-use nix::libc::{self, mcontext_t};
+use iced_x86::{Decoder, Mnemonic};
+use nix::libc;
 
 use crate::{
-    context::{iced_register_to_libc_reg, Context},
+    context::Context,
     runtime::get_runtime,
     simulator::SIMULATOR,
 };
@@ -15,52 +12,6 @@ fn reraise_as_native_segv() {
         libc::signal(libc::SIGSEGV, libc::SIG_DFL);
         libc::raise(libc::SIGSEGV);
         libc::exit(1);
-    }
-}
-
-fn diagnose_inst(mcontext: &mcontext_t, inst: Instruction) {
-    let mut info_factory = InstructionInfoFactory::new();
-    let info = info_factory.info(&inst);
-
-    let mut inst_formatter = GasFormatter::new();
-
-    let get_register_value = |reg, _index, _size| match reg {
-        Register::ES | Register::CS | Register::SS | Register::DS => Some(0),
-        _ => Some(mcontext.gregs[reg as usize] as u64),
-    };
-
-    let out = {
-        let mut out = String::new();
-        inst_formatter.format(&inst, &mut out);
-        out
-    };
-    println!("@PC + 0x00: {:?}: {out}", inst.mnemonic());
-    for i in 0..inst.op_count() {
-        let kind = inst.op_kind(i);
-        let access = info.op_access(i);
-        match kind {
-            OpKind::Memory => {
-                let va = inst.virtual_address(i, 0, get_register_value);
-                if va.is_none() {
-                    eprintln!("Failed to compute the virtual address");
-                    reraise_as_native_segv();
-                }
-                let va = va.unwrap() as usize;
-                println!("- Memory access at address {va:#x} as {access:?}");
-            }
-            OpKind::Register => {
-                let reg = inst.op_register(i);
-                if let Some(reg) = iced_register_to_libc_reg(reg) {
-                    let value = mcontext.gregs[reg as usize];
-                    println!("- Register access: {reg:?} with value {value:#x} as {access:?}");
-                } else {
-                    println!("- Register access: {reg:?} as {access:?}");
-                }
-            }
-            _ => {
-                println!("- Other operand: {kind:?} as {access:?}");
-            }
-        }
     }
 }
 
@@ -84,9 +35,6 @@ async fn segv_handler(
     let handler = {
         let handler = simulator.lookup_handler(address);
         if handler.is_none() {
-            eprintln!(
-                "Segmentation fault at address {address:#x} (PC: {pc:?}) with no handler found"
-            );
             reraise_as_native_segv();
         }
         handler.unwrap()
@@ -152,11 +100,6 @@ async fn segv_handler(
             }
         }
         _ => {
-            println!(
-                "Unsupported instruction at PC {pc:?}: {:?}",
-                inst.mnemonic()
-            );
-            diagnose_inst(mcontext, inst);
             reraise_as_native_segv();
         }
     }

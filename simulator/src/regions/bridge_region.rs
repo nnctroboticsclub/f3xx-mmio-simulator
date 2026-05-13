@@ -25,7 +25,6 @@ impl MmioHandler for BridgeRegion {
             );
         }
         let value = self.dev.get_vector_table().as_ptr() as usize as u32;
-        println!("R {address:08x} --> {value:08x}");
         value
     }
     fn write(&mut self, address: usize, value: u64) {
@@ -38,7 +37,6 @@ impl MmioHandler for BridgeRegion {
         }
         self.dev
             .set_vector_table(VectorTablePtr::new(value as *const VectorTable));
-        println!("W {address:08x} <-- {value:08x}");
     }
     fn contains(&self, address: usize) -> bool {
         self.start_addr <= address && address < self.start_addr + 8

@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
     sync::{mpsc as std_mpsc, Arc, Mutex, OnceLock},
+    time::Duration,
 };
 use tokio::sync::mpsc as tokio_mpsc;
 
@@ -70,13 +71,17 @@ impl DynDevice {
         let obj = Self(Arc::new(Mutex::new(dev)));
         {
             let url = url.to_string();
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .unwrap();
-                rt.block_on(Self::task(url, request_rx, response_tx));
-            });
+            std::thread::Builder::new()
+                .name("DCClientThread".to_string())
+                .spawn(move || {
+                    let rt = tokio::runtime::Builder::new_multi_thread()
+                        .worker_threads(2)
+                        .enable_all()
+                        .build()
+                        .unwrap();
+                    rt.block_on(Self::task(url, request_rx, response_tx));
+                })
+                .expect("Failed to spawn DCClient thread");
         }
         obj
     }
@@ -86,12 +91,25 @@ impl DynDevice {
         request_rx: std_mpsc::Receiver<ThreadRequest>,
         response_tx: std_mpsc::Sender<ThreadResponse>,
     ) {
-        let mut dc_client = DCClient::new(&url).await.unwrap();
+        let mut dc_client = match DCClient::new(&url).await {
+            Ok(client) => Some(client),
+            Err(_err) => None,
+        };
 
         loop {
             match request_rx.recv() {
                 Ok(ThreadRequest::OpenChannel(channel_name)) => {
-                    let channel_id = dc_client.open(channel_name).await.unwrap();
+                    let channel_id = if let Some(client) = dc_client.as_mut() {
+                        match client.open(channel_name).await {
+                            Ok(channel_id) => channel_id,
+                            Err(_err) => {
+                                dc_client = None;
+                                0
+                            }
+                        }
+                    } else {
+                        0
+                    };
                     response_tx
                         .send(ThreadResponse::OpenChannelResult(channel_id))
                         .unwrap();
@@ -100,9 +118,17 @@ impl DynDevice {
                     dc_client.send(channel_id, data).await.unwrap();
                 } */
                 Ok(ThreadRequest::SendBin(channel_id, data)) => {
-                    dc_client.send_bin(channel_id, data).await.unwrap();
+                    if let Some(client) = dc_client.as_mut() {
+                        if let Err(_err) = client.send_bin(channel_id, data).await {
+                            dc_client = None;
+                        }
+                    }
                 }
                 Ok(ThreadRequest::Listen(channel_id, s_tx_txt, s_tx_bin)) => {
+                    if dc_client.is_none() {
+                        continue;
+                    }
+
                     let t_tx_txt = if let Some(s_tx_txt) = s_tx_txt {
                         Some(mpsc_rx_to_tokio(s_tx_txt).await)
                     } else {
@@ -114,10 +140,11 @@ impl DynDevice {
                         None
                     };
 
-                    dc_client
-                        .listen(channel_id, t_tx_txt, t_tx_bin)
-                        .await
-                        .unwrap();
+                    if let Some(client) = dc_client.as_mut() {
+                        if let Err(_err) = client.listen(channel_id, t_tx_txt, t_tx_bin).await {
+                            dc_client = None;
+                        }
+                    }
                 }
                 Err(_) => break,
             }
@@ -132,9 +159,17 @@ impl DynDevice {
             .send(ThreadRequest::OpenChannel(channel_name))
             .unwrap();
 
-        let ThreadResponse::OpenChannelResult(channel_id) =
-            self.0.lock().unwrap().response_rx.recv().unwrap();
-        channel_id
+        let response = self
+            .0
+            .lock()
+            .unwrap()
+            .response_rx
+            .recv_timeout(Duration::from_secs(5));
+
+        match response {
+            Ok(ThreadResponse::OpenChannelResult(channel_id)) => channel_id,
+            Err(_) => 0,
+        }
     }
 
     /* pub fn _send(&self, channel_id: ChannelID, data: String) {
@@ -185,11 +220,6 @@ impl DynDevice {
         {
             unsafe { std::mem::transmute::<*const (), extern "C" fn()>(handler) }
         } else {
-            println!("Vector table is not set");
-            println!(
-                "vector_table: {:?}",
-                self.0.lock().unwrap().vector_table.as_ptr()
-            );
             return;
         };
 

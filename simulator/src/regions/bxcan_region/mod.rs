@@ -39,7 +39,9 @@ pub struct BXCanRegion {
 }
 impl BXCanRegion {
     async fn new(dev: DynDevice, start_addr: usize) -> Self {
+        let (tx_bin, rx_bin) = mpsc::channel();
         let channel = dev.open_channel("can".to_string());
+        dev.listen(channel, None, Some(tx_bin));
 
         let obj = Self {
             device: dev.clone(),
@@ -54,15 +56,12 @@ impl BXCanRegion {
             fifo1_pending_int_enable: false,
         };
 
-        let (tx, rx) = mpsc::channel();
         {
             let dev = obj.device.clone();
             let filters = obj.filters.clone();
             let rx_mailboxes = obj.rx_mailboxes.clone();
-            std::thread::spawn(|| Self::dc_listener(dev, filters, rx_mailboxes, rx));
+            std::thread::spawn(|| Self::dc_listener(dev, filters, rx_mailboxes, rx_bin));
         }
-
-        dev.listen(channel, None, Some(tx));
         obj
     }
 

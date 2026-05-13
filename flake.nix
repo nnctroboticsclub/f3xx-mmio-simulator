@@ -17,20 +17,29 @@
 
   inputs.devconsole.url = "github:syoch/devconsole";
 
+  inputs.rust-overlay = {
+    url = "github:oxalica/rust-overlay";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+
   outputs =
     {
       self,
       nixpkgs,
       roboenv,
-      nano,
       f3-baremetal,
+      rust-overlay,
       devconsole,
+      ...
     }:
     let
       system = "x86_64-linux";
       rpkgs = roboenv.legacyPackages.${system};
       pkgs = import nixpkgs {
         inherit system;
+        overlays = [
+          (import rust-overlay)
+        ];
       };
     in
     {
@@ -66,7 +75,7 @@
         default = self.packages.${system}.f3xx-mmio-simulator;
       };
       devShells.x86_64-linux.default = rpkgs.roboenv {
-        name = "f3-baremetal";
+        name = "f3xx-mmio-simulator";
 
         c_cpp.enable = true;
         c_cpp.toolchain = "clang";
@@ -77,12 +86,11 @@
           pkgs.lldb
           pkgs.zydis
 
-          pkgs.cargo
+          pkgs.rust-bin.stable.latest.default
           pkgs.rust-analyzer
           pkgs.pkg-config
           pkgs.udev
           pkgs.rustfmt
-          pkgs.rustc
           pkgs.clippy
 
           devconsole.packages.${system}.default
@@ -95,6 +103,52 @@
           rpkgs.clang-toolchain
           (pkgs.cereal // { cmakeBuildInputs = [ ]; })
           # self.packages.${system}.f3xx-mmio-simulator
+
+          (pkgs.stdenv.mkDerivation {
+            name = "newlib-cmake";
+            src = pkgs.newlib;
+            cmakeBuildInputs = [ ];
+
+            buildPhase = ''
+              mkdir -p $out/lib/cmake/Newlib
+              cat > $out/lib/cmake/Newlib/NewlibConfig.cmake << EOF
+              # Newlib CMake configuration file
+              set(Newlib_INCLUDE_DIRS "$src/x86_64-unknown-linux-gnu/include")
+              set(Newlib_LIB_DIRS "$src/x86_64-unknown-linux-gnu/lib")
+              if (NOT TARGET Newlib::Newlib)
+                add_library(Newlib::Newlib INTERFACE IMPORTED)
+                set_target_properties(Newlib::Newlib PROPERTIES
+                  INTERFACE_INCLUDE_DIRECTORIES "\''${Newlib_INCLUDE_DIRS}"
+                )
+
+                add_library(Newlib::libc INTERFACE IMPORTED)
+                target_link_libraries(Newlib::libc INTERFACE Newlib::Newlib)
+                set_target_properties(Newlib::libc PROPERTIES
+                  INTERFACE_LINK_LIBRARIES "\''${Newlib_LIB_DIRS}/libc.a"
+                )
+
+                add_library(Newlib::libm INTERFACE IMPORTED)
+                target_link_libraries(Newlib::libm INTERFACE Newlib::Newlib)
+                set_target_properties(Newlib::libm PROPERTIES
+                  INTERFACE_LINK_LIBRARIES "\''${Newlib_LIB_DIRS}/libm.a"
+                )
+
+                add_library(Newlib::libg INTERFACE IMPORTED)
+                target_link_libraries(Newlib::libg INTERFACE Newlib::Newlib)
+                set_target_properties(Newlib::libg PROPERTIES
+                  INTERFACE_LINK_LIBRARIES "\''${Newlib_LIB_DIRS}/libg.a"
+                )
+
+                add_library(Newlib::libnosys INTERFACE IMPORTED)
+                target_link_libraries(Newlib::libnosys INTERFACE Newlib::Newlib)
+                set_target_properties(Newlib::libnosys PROPERTIES
+                  INTERFACE_LINK_LIBRARIES "\''${Newlib_LIB_DIRS}/libnosys.a"
+                )
+              endif()
+              EOF
+            '';
+
+          })
           (f3-baremetal.packages.${system}.default.overrideAttrs {
             pname = "f3-baremetal-simulated";
             ROBOPJ_TOOLCHAIN = "ClangToolchain";

@@ -100,13 +100,7 @@ impl<'a> Context<'a> {
 
                 Some(self.read_u32_memory(address) as u64)
             }
-            _ => {
-                println!(
-                    "Unsupported operand kind for operand {index}: {:?}",
-                    inst.op_kind(index)
-                );
-                None
-            }
+            _ => None,
         }
     }
 }

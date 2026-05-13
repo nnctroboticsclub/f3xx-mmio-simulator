@@ -36,12 +36,10 @@ impl MmioHandler for FlashRegion {
         for i in 0..4 {
             value |= (self.mem[offset + i] as u32) << (i * 8);
         }
-        println!("R {address:08x} --> {value:08x}");
         value
     }
     fn write(&mut self, address: usize, value: u64) {
         let offset = address - self.start_addr;
-        println!("W {address:08x} <-- {value:08x}");
         if offset == 0x00 {
             // ACR
             self.mem[offset] = (value & 0xFF) as u8;

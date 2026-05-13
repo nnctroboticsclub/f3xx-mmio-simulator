@@ -117,7 +117,6 @@ impl GPIOPin {
             self.output = value;
             self.input = value;
         } else {
-            println!("GPIO: {self:#?}");
             panic!("Attempt to write to a GPIO pin that is not in output mode");
         }
     }
