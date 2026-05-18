@@ -91,10 +91,7 @@ impl DynDevice {
         request_rx: std_mpsc::Receiver<ThreadRequest>,
         response_tx: std_mpsc::Sender<ThreadResponse>,
     ) {
-        let mut dc_client = match DCClient::new(&url).await {
-            Ok(client) => Some(client),
-            Err(_err) => None,
-        };
+        let mut dc_client = DCClient::new(&url).await.ok();
 
         loop {
             match request_rx.recv() {

@@ -24,8 +24,7 @@ impl MmioHandler for BridgeRegion {
                 address
             );
         }
-        let value = self.dev.get_vector_table().as_ptr() as usize as u32;
-        value
+        self.dev.get_vector_table().as_ptr() as usize as u32
     }
     fn write(&mut self, address: usize, value: u64) {
         let offset = address - self.start_addr;
