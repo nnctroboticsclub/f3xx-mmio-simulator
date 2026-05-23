@@ -86,12 +86,16 @@
           pkgs.lldb
           pkgs.zydis
 
-          pkgs.rust-bin.stable.latest.default
+          (pkgs.rust-bin.nightly.latest.default.override {
+            targets = [ "x86_64-unknown-none" ];
+            extensions = [ "rust-src" ];
+          })
           pkgs.rust-analyzer
           pkgs.pkg-config
           pkgs.udev
           pkgs.rustfmt
           pkgs.clippy
+          pkgs.gdb
 
           devconsole.packages.${system}.default
         ];

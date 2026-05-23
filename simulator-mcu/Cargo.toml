@@ -1,11 +1,14 @@
 [package]
-name = "mmio-hook"
+name = "f3xx-mmio-simulator"
 version = "1.0.0"
 authors = ["syoch <syoch64@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+async-trait = "0.1.89"
 cxx = "1.0"
+devconsole = "1.0.1"
+tokio = "1.52.1"
 
 [dependencies.nix]
 version = "0.31.2"
@@ -20,4 +23,4 @@ features = ["std", "decoder", "gas", "instr_info"]
 cxx-build = "1.0"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["staticlib", "cdylib"]

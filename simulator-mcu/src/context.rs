@@ -1,6 +1,8 @@
 use iced_x86::{Instruction, OpKind, Register};
 use nix::libc::{self, mcontext_t};
 
+use super::DynMMIOHandler;
+
 pub fn iced_register_to_libc_reg(reg: Register) -> Option<libc::c_int> {
     match reg {
         Register::RAX | Register::EAX => Some(libc::REG_RAX),
@@ -23,18 +25,14 @@ pub fn iced_register_to_libc_reg(reg: Register) -> Option<libc::c_int> {
     }
 }
 
-extern "C" {
-    fn mmio_read(address: usize) -> u64;
-    fn mmio_write(address: usize, value: u64);
-}
-
 pub struct Context<'a> {
     mcontext: &'a mut mcontext_t,
+    region: &'a mut DynMMIOHandler,
 }
 
 impl<'a> Context<'a> {
-    pub fn new(mcontext: &'a mut mcontext_t) -> Self {
-        Self { mcontext }
+    pub fn new(mcontext: &'a mut mcontext_t, region: &'a mut DynMMIOHandler) -> Self {
+        Self { mcontext, region }
     }
 
     fn get_register_value(&self, reg: Register) -> Option<u64> {
@@ -57,11 +55,11 @@ impl<'a> Context<'a> {
     }
 
     fn write_u64_memory(&mut self, address: usize, value: u64) {
-        unsafe { mmio_write(address, value) };
+        self.region.write(address, value);
     }
 
     fn read_u32_memory(&self, address: usize) -> u32 {
-        unsafe { mmio_read(address) as u32 }
+        self.region.read(address)
     }
 
     pub fn set_operand_value(&mut self, inst: Instruction, op_index: u32, value: u64) {

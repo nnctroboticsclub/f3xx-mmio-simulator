@@ -1,7 +1,11 @@
 use iced_x86::{Decoder, Mnemonic};
 use nix::libc;
 
-use crate::context::Context;
+use crate::{
+    context::Context,
+    runtime::get_runtime,
+    simulator::SIMULATOR,
+};
 
 fn reraise_as_native_segv() {
     unsafe {
@@ -11,14 +15,30 @@ fn reraise_as_native_segv() {
     }
 }
 
-pub extern "C" fn mmio_segv_handler(
+async fn segv_handler(
     _signum: libc::c_int,
-    _info: *mut libc::siginfo_t,
+    info: *mut libc::siginfo_t,
     context: *mut libc::c_void,
 ) {
+    let address = unsafe { info.read().si_addr() as usize };
     let ucontext = unsafe { &mut *(context as *mut libc::ucontext_t) };
     let mcontext = &mut ucontext.uc_mcontext;
     let pc = mcontext.gregs[libc::REG_RIP as usize] as *const u8;
+
+    let simulator = SIMULATOR
+        .get()
+        .expect("Simulator not initialized")
+        .lock()
+        .unwrap();
+    let mut simulator = simulator.borrow_mut();
+
+    let handler = {
+        let handler = simulator.lookup_handler(address);
+        if handler.is_none() {
+            reraise_as_native_segv();
+        }
+        handler.unwrap()
+    };
 
     let mut decoder = Decoder::new(
         64,
@@ -27,7 +47,7 @@ pub extern "C" fn mmio_segv_handler(
     );
     let inst = decoder.decode();
 
-    let mut ctx = Context::new(mcontext);
+    let mut ctx = Context::new(mcontext, handler);
 
     match inst.mnemonic() {
         Mnemonic::Or => {
@@ -85,4 +105,13 @@ pub extern "C" fn mmio_segv_handler(
     }
 
     mcontext.gregs[libc::REG_RIP as usize] += inst.len() as i64;
+}
+
+pub extern "C" fn mmio_segv_handler(
+    signum: libc::c_int,
+    info: *mut libc::siginfo_t,
+    context: *mut libc::c_void,
+) {
+    let future = segv_handler(signum, info, context);
+    get_runtime().block_on(future);
 }

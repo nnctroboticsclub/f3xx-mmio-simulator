@@ -1,20 +1,47 @@
-#include <cstdint>
+#include <stddef.h>
+#include <stdint.h>
 
-#include "f3xx-mmio-simulator.h"
+extern "C" {
+extern void (*__init_array_start[])(void) __attribute__((weak));
+extern void (*__init_array_end[])(void) __attribute__((weak));
 
-const int kSYSCLK = 8000000;
+void _start() {
+  if (__init_array_start && __init_array_end) {
+    for (void (**p)(void) = __init_array_start; p < __init_array_end; ++p) {
+      if (*p && (uintptr_t)*p != 1) (*p)();
+    }
+  }
 
-extern "C" uint32_t SystemCoreClock = kSYSCLK;
-extern "C" const uint8_t AHBPrescTable[16] = {0, 0, 0, 0, 0, 0, 0, 0,
-                                              1, 2, 3, 4, 6, 7, 8, 9};
-extern "C" const uint8_t APBPrescTable[8] = {0, 0, 0, 0, 1, 2, 3, 4};
+  extern int main();
+  main();
 
-extern "C" void InitRCC();
-extern "C" void InitVector();
+  // exit
+  asm volatile("mov $60, %%rax\n"
+               "mov $0, %%rdi\n"
+               "syscall\n"
+               : : : "rax", "rdi");
+}
+
+void _fini() {}
+void* __dso_handle = (void*)0;
+
+// MMIO stubs
+uint64_t mmio_read(uintptr_t addr) { return 0; }
+void mmio_write(uintptr_t addr, uint64_t val) {}
+
+// SystemCoreClock
+uint32_t SystemCoreClock = 8000000;
+
+// Newlib syscall stubs (others that are not in console.hpp)
+void* _sbrk(intptr_t incr) { return (void*)-1; }
+int _kill(int pid, int sig) { return -1; }
+int _getpid(void) { return 1; }
+
+}
+
+// C++ mangled name in libmmio_hook
+void init_mmio_simulator();
 
 __attribute__((constructor)) void InitEmulator() {
   init_mmio_simulator();
-
-  InitRCC();
-  InitVector();
 }
