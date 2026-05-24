@@ -6,45 +6,25 @@ else ()
     set(TARGET_DIR "x86_64-unknown-linux-gnu/release")
 endif ()
 
-if (DEFINED ENV{CARGO_BUILD_TARGET})
-    set(TARGET_DIR "$ENV{CARGO_BUILD_TARGET}/${TARGET_DIR}")
-endif()
-
-if(ENABLE_LTO)
-    set(RUST_FLAGS "-Clinker-plugin-lto" "-Clinker=clang-17" "-Clink-arg=-fuse-ld=lld-17")
-endif()
-
 set(RUST_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}")
-set(F3XX_MMIO_SIMULATOR_INC "${CMAKE_CURRENT_BINARY_DIR}/include")
-set(F3XX_MMIO_SIMULATOR_LIB "${RUST_TARGET_DIR}/${TARGET_DIR}/libmmio_hook.so")
-set(F3XX_MMIO_SIMULATOR_CXX "${RUST_TARGET_DIR}/mmio-hook.cpp")
+set(F3XX_MMIO_SIMULATOR_LIB "${RUST_TARGET_DIR}/${TARGET_DIR}/libmmio_hook.a")
 
 FILE(GLOB_RECURSE F3XX_MMIO_SIMULATOR_RS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.rs")
 
 add_custom_command(
-    OUTPUT ${F3XX_MMIO_SIMULATOR_CXX} ${F3XX_MMIO_SIMULATOR_LIB}
-    COMMAND CARGO_TARGET_DIR=${RUST_TARGET_DIR} RUSTFLAGS="${RUST_FLAGS}" ${CARGO_CMD}
-    COMMAND cp ${RUST_TARGET_DIR}/cxxbridge/mmio-hook/src/lib.rs.cc ${F3XX_MMIO_SIMULATOR_CXX}
-    COMMAND mkdir -p ${F3XX_MMIO_SIMULATOR_INC}
-    COMMAND cp ${RUST_TARGET_DIR}/cxxbridge/mmio-hook/src/lib.rs.h ${F3XX_MMIO_SIMULATOR_INC}/f3xx-mmio-simulator.h
+    OUTPUT ${F3XX_MMIO_SIMULATOR_LIB}
+    COMMAND CARGO_TARGET_DIR=${RUST_TARGET_DIR} RUSTFLAGS="${RUST_FLAGS}" ${CARGO_CMD} --target x86_64-unknown-linux-gnu
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     DEPENDS ${F3XX_MMIO_SIMULATOR_RS}
 )
 
-add_library(f3xx-mmio-simulator-rs-lib SHARED IMPORTED)
-target_link_libraries(f3xx-mmio-simulator-rs-lib INTERFACE pthread dl)
+add_custom_target(mmio_hook_target DEPENDS ${F3XX_MMIO_SIMULATOR_LIB})
+
+add_library(f3xx-mmio-simulator-rs-lib STATIC IMPORTED)
 set_target_properties(f3xx-mmio-simulator-rs-lib PROPERTIES
     IMPORTED_LOCATION "${F3XX_MMIO_SIMULATOR_LIB}"
-    IMPORTED_NO_SONAME TRUE
 )
-
-add_library(f3xx-mmio-simulator-rs-rt STATIC ${F3XX_MMIO_SIMULATOR_CXX})
-target_include_directories(f3xx-mmio-simulator-rs-rt PUBLIC ${F3XX_MMIO_SIMULATOR_INC})
-target_link_libraries(f3xx-mmio-simulator-rs-rt PUBLIC f3xx-mmio-simulator-rs-lib)
+add_dependencies(f3xx-mmio-simulator-rs-lib mmio_hook_target)
 
 add_library(f3xx-mmio-simulator-rs INTERFACE)
-target_link_libraries(f3xx-mmio-simulator-rs INTERFACE f3xx-mmio-simulator-rs-rt)
-
-add_test(NAME F3XX_MMIO_SIMULATOR_test
-    COMMAND cargo test
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(f3xx-mmio-simulator-rs INTERFACE f3xx-mmio-simulator-rs-lib)

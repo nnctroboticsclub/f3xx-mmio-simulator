@@ -1,88 +1,245 @@
-use iced_x86::{Decoder, Mnemonic};
-use nix::libc;
-
 use crate::context::Context;
+use crate::protocol::{Request, Response, CMD_READ, CMD_WRITE, RESP_DATA, RESP_INTERRUPT};
+use crate::syscall;
+use iced_x86::{Decoder, MemorySize, Mnemonic, OpKind};
 
-fn reraise_as_native_segv() {
+#[no_mangle]
+pub static mut WAITING_FOR_DATA: bool = false;
+#[no_mangle]
+pub static mut LAST_READ_VALUE: u64 = 0;
+
+fn print_mem_assign(direction: char, addr: u32, value: u32) {
+    let mut buf = [0u8; 20];
+    let hex_table = b"0123456789abcdef";
+    buf[0] = direction as u8;
+    buf[1] = b' ';
+    buf[2] = hex_table[((addr >> 28) & 0xf) as usize];
+    buf[3] = hex_table[((addr >> 24) & 0xf) as usize];
+    buf[4] = hex_table[((addr >> 20) & 0xf) as usize];
+    buf[5] = hex_table[((addr >> 16) & 0xf) as usize];
+    buf[6] = hex_table[((addr >> 12) & 0xf) as usize];
+    buf[7] = hex_table[((addr >> 8) & 0xf) as usize];
+    buf[8] = hex_table[((addr >> 4) & 0xf) as usize];
+    buf[9] = hex_table[(addr & 0xf) as usize];
+    buf[10] = b' ';
+    buf[11] = hex_table[((value >> 28) & 0xf) as usize];
+    buf[12] = hex_table[((value >> 24) & 0xf) as usize];
+    buf[13] = hex_table[((value >> 20) & 0xf) as usize];
+    buf[14] = hex_table[((value >> 16) & 0xf) as usize];
+    buf[15] = hex_table[((value >> 12) & 0xf) as usize];
+    buf[16] = hex_table[((value >> 8) & 0xf) as usize];
+    buf[17] = hex_table[((value >> 4) & 0xf) as usize];
+    buf[18] = hex_table[(value & 0xf) as usize];
+    buf[19] = b'\n';
     unsafe {
-        libc::signal(libc::SIGSEGV, libc::SIG_DFL);
-        libc::raise(libc::SIGSEGV);
-        libc::exit(1);
+        syscall::write(2, buf.as_ptr(), 20);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn sigio_handler(
+    _signum: i32,
+    _info: *mut core::ffi::c_void,
+    context: *mut core::ffi::c_void,
+) {
+    let mut resp = Response {
+        resp_type: 0,
+        _reserved: [0; 7],
+        value: 0,
+    };
+
+    unsafe {
+        let n = syscall::read(
+            0,
+            &mut resp as *mut _ as *mut u8,
+            core::mem::size_of::<Response>(),
+        );
+        if n == core::mem::size_of::<Response>() as isize {
+            match resp.resp_type {
+                RESP_DATA => {
+                    LAST_READ_VALUE = resp.value;
+                    WAITING_FOR_DATA = false;
+                }
+                RESP_INTERRUPT => {
+                    inject_interrupt(context, resp.value);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn mmio_read(addr: u64, size: MemorySize) -> u64 {
+    let req = Request {
+        cmd: CMD_READ,
+        size: get_memory_size(size),
+        _reserved: [0; 6],
+        address: addr,
+        value: 0,
+        timestamp: 0,
+    };
+    unsafe {
+        syscall::write(
+            1,
+            &req as *const _ as *const u8,
+            core::mem::size_of::<Request>(),
+        );
+        WAITING_FOR_DATA = true;
+        while WAITING_FOR_DATA {
+            core::hint::spin_loop();
+        }
+
+        print_mem_assign('R', addr as u32, LAST_READ_VALUE as u32);
+        LAST_READ_VALUE
+    }
+}
+
+fn mmio_write(addr: u64, value: u64, size: MemorySize) {
+    let req = Request {
+        cmd: CMD_WRITE,
+        size: get_memory_size(size),
+        _reserved: [0; 6],
+        address: addr,
+        value,
+        timestamp: 0,
+    };
+    unsafe {
+        syscall::write(
+            1,
+            &req as *const _ as *const u8,
+            core::mem::size_of::<Request>(),
+        );
+    }
+    print_mem_assign('W', addr as u32, value as u32);
+}
+
+fn get_memory_size(ms: iced_x86::MemorySize) -> u8 {
+    match ms {
+        iced_x86::MemorySize::UInt8 | iced_x86::MemorySize::Int8 => 1,
+        iced_x86::MemorySize::UInt16 | iced_x86::MemorySize::Int16 => 2,
+        iced_x86::MemorySize::UInt32 | iced_x86::MemorySize::Int32 => 4,
+        iced_x86::MemorySize::UInt64 | iced_x86::MemorySize::Int64 => 8,
+        _ => 4,
     }
 }
 
 pub extern "C" fn mmio_segv_handler(
-    _signum: libc::c_int,
-    _info: *mut libc::siginfo_t,
-    context: *mut libc::c_void,
+    _signum: i32,
+    _info: *mut core::ffi::c_void,
+    context: *mut core::ffi::c_void,
 ) {
-    let ucontext = unsafe { &mut *(context as *mut libc::ucontext_t) };
-    let mcontext = &mut ucontext.uc_mcontext;
-    let pc = mcontext.gregs[libc::REG_RIP as usize] as *const u8;
+    let context_addr = context as u64;
+    let rip_ptr = (context_addr + 168) as *mut u64;
+    let rip = unsafe { *rip_ptr };
 
-    let mut decoder = Decoder::new(
-        64,
-        unsafe { std::slice::from_raw_parts(pc, 15) },
-        iced_x86::DecoderOptions::NONE,
-    );
+    let mut code_buf = [0u8; 15];
+    unsafe {
+        core::ptr::copy_nonoverlapping(rip as *const u8, code_buf.as_mut_ptr(), 15);
+    }
+
+    let mut decoder = Decoder::new(64, &code_buf, iced_x86::DecoderOptions::NONE);
+    decoder.set_ip(rip);
     let inst = decoder.decode();
 
-    let mut ctx = Context::new(mcontext);
+    let mut ctx =
+        Context::new(unsafe { &mut *((context_addr + 40) as *mut crate::context::MContext) });
 
     match inst.mnemonic() {
         Mnemonic::Or => {
-            let value = ctx.get_operand_value(0, &inst).unwrap();
-            let operand_value = ctx.get_operand_value(1, &inst).unwrap();
-            let new_value = value | operand_value;
-            ctx.set_operand_value(inst, 0, new_value);
+            let v1 = get_operand_value(&ctx, 0, &inst);
+            let v2 = get_operand_value(&ctx, 1, &inst);
+            set_operand_value(&mut ctx, &inst, 0, v1 | v2);
         }
         Mnemonic::Xor => {
-            let value = ctx.get_operand_value(0, &inst).unwrap();
-            let operand_value = ctx.get_operand_value(1, &inst).unwrap();
-            let new_value = value ^ operand_value;
-            ctx.set_operand_value(inst, 0, new_value);
+            let v1 = get_operand_value(&ctx, 0, &inst);
+            let v2 = get_operand_value(&ctx, 1, &inst);
+            set_operand_value(&mut ctx, &inst, 0, v1 ^ v2);
         }
         Mnemonic::And => {
-            let op0 = ctx.get_operand_value(0, &inst).unwrap();
-            let op1 = ctx.get_operand_value(1, &inst).unwrap();
-            let new_value = op0 & op1;
-            ctx.set_operand_value(inst, 0, new_value);
+            let v1 = get_operand_value(&ctx, 0, &inst);
+            let v2 = get_operand_value(&ctx, 1, &inst);
+            set_operand_value(&mut ctx, &inst, 0, v1 & v2);
         }
         Mnemonic::Mov => {
-            let value = ctx.get_operand_value(1, &inst).unwrap();
-            ctx.set_operand_value(inst, 0, value);
+            let v = get_operand_value(&ctx, 1, &inst);
+            set_operand_value(&mut ctx, &inst, 0, v);
         }
         Mnemonic::Test => {
-            let value = ctx.get_operand_value(0, &inst).unwrap();
-            let operand_value = ctx.get_operand_value(1, &inst).unwrap();
-            let new_value = value & operand_value;
+            let v1 = get_operand_value(&ctx, 0, &inst);
+            let v2 = get_operand_value(&ctx, 1, &inst);
+            let res = v1 & v2;
 
-            let flags = &mut mcontext.gregs[libc::REG_EFL as usize];
-            *flags &= !(1 << 0); // CF
-            *flags &= !(1 << 6); // ZF
-            *flags &= !(1 << 7); // SF
-            *flags &= !(1 << 2); // PF
-            *flags &= !!(1 << 11); // OF
-            if (new_value & 0x80) != 0 {
-                *flags |= 1 << 7; // SF
+            let flags =
+                unsafe { &mut (*((context_addr + 40) as *mut crate::context::MContext)).gregs[17] };
+            *flags &= !((1 << 0) | (1 << 6) | (1 << 7) | (1 << 2) | (1 << 11));
+            if (res & 0x80000000) != 0 {
+                *flags |= 1 << 7;
             }
-            if new_value == 0 {
-                *flags |= 1 << 6; // ZF
-            }
-            let mut parity = 0;
-            for i in 0..8 {
-                if (new_value & (1 << i)) != 0 {
-                    parity += 1;
-                }
-            }
-            if parity % 2 == 0 {
-                *flags |= 1 << 2; // PF
+            if res == 0 {
+                *flags |= 1 << 6;
             }
         }
         _ => {
-            reraise_as_native_segv();
+            unsafe {
+                syscall::write(2, b"Unknown Mnemonic: ".as_ptr(), 18);
+                crate::write_hex(2, inst.mnemonic() as u64);
+            }
+            loop {}
         }
     }
 
-    mcontext.gregs[libc::REG_RIP as usize] += inst.len() as i64;
+    unsafe {
+        *rip_ptr += inst.len() as u64;
+    }
+}
+
+fn get_operand_value(ctx: &Context, op_idx: u32, inst: &iced_x86::Instruction) -> u64 {
+    match inst.op_kind(op_idx) {
+        OpKind::Register => ctx
+            .get_register_value(inst.op_register(op_idx))
+            .unwrap_or(0),
+        OpKind::Immediate8 => inst.immediate8() as u64,
+        OpKind::Immediate8_2nd => inst.immediate8_2nd() as u64,
+        OpKind::Immediate16 => inst.immediate16() as u64,
+        OpKind::Immediate32 => inst.immediate32() as u64,
+        OpKind::Immediate64 => inst.immediate64(),
+        OpKind::Immediate8to16 => inst.immediate8to16() as u64,
+        OpKind::Immediate8to32 => inst.immediate8to32() as u64,
+        OpKind::Immediate8to64 => inst.immediate8to64() as u64,
+        OpKind::Immediate32to64 => inst.immediate32to64() as u64,
+        OpKind::Memory => {
+            let addr = inst
+                .virtual_address(op_idx, 0, |reg, _, _| ctx.get_register_value(reg))
+                .unwrap_or(0);
+            mmio_read(addr, inst.memory_size())
+        }
+        _ => 0,
+    }
+}
+
+fn set_operand_value(ctx: &mut Context, inst: &iced_x86::Instruction, op_idx: u32, value: u64) {
+    match inst.op_kind(op_idx) {
+        OpKind::Register => ctx.write_register(inst.op_register(op_idx), value),
+        OpKind::Memory => {
+            let addr = inst
+                .virtual_address(op_idx, 0, |reg, _, _| ctx.get_register_value(reg))
+                .unwrap_or(0);
+            mmio_write(addr, value, inst.memory_size());
+        }
+        _ => {}
+    }
+}
+
+unsafe fn inject_interrupt(context: *mut core::ffi::c_void, _irq_num: u64) {
+    let ucontext = &mut *(context as *mut crate::context::UContext);
+    let mcontext = &mut ucontext.uc_mcontext;
+
+    let rsp = mcontext.gregs[15] as u64;
+    let new_rsp = rsp - 8;
+    let rip = mcontext.gregs[16] as u64;
+    *(new_rsp as *mut u64) = rip;
+    mcontext.gregs[15] = new_rsp as i64;
+
+    // Placeholder jump
+    // mcontext.gregs[16] = 0xdeadbeef;
 }

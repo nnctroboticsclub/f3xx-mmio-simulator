@@ -5,14 +5,30 @@ extern "C" {
 extern void (*__init_array_start[])(void) __attribute__((weak));
 extern void (*__init_array_end[])(void) __attribute__((weak));
 
-void _start() {
+extern int _write(int fd, const void* buf, size_t count);
+
+int write(int fd, const void* buf, size_t count) {
+  return _write(fd, buf, count);
+}
+
+long my_write(int fd, const void* buf, size_t count) {
+  long ret;
+  asm volatile("syscall"
+               : "=a"(ret)
+               : "a"(1), "D"(fd), "S"(buf), "d"(count)
+               : "rcx", "r11", "memory");
+  return ret;
+}
+
+extern int main();
+
+void start_c() {
   if (__init_array_start && __init_array_end) {
     for (void (**p)(void) = __init_array_start; p < __init_array_end; ++p) {
       if (*p && (uintptr_t)*p != 1) (*p)();
     }
   }
 
-  extern int main();
   main();
 
   // exit
@@ -21,6 +37,16 @@ void _start() {
                "syscall\n"
                : : : "rax", "rdi");
 }
+
+asm(
+  ".global _start\n"
+  "_start:\n"
+  "  and $0xfffffffffffffff0, %rsp\n"
+  "  call start_c\n"
+  "  mov $60, %rax\n"
+  "  xor %rdi, %rdi\n"
+  "  syscall\n"
+);
 
 void _fini() {}
 void* __dso_handle = (void*)0;
@@ -32,15 +58,14 @@ void mmio_write(uintptr_t addr, uint64_t val) {}
 // SystemCoreClock
 uint32_t SystemCoreClock = 8000000;
 
-// Newlib syscall stubs (others that are not in console.hpp)
+// Newlib syscall stubs
 void* _sbrk(intptr_t incr) { return (void*)-1; }
 int _kill(int pid, int sig) { return -1; }
 int _getpid(void) { return 1; }
 
 }
 
-// C++ mangled name in libmmio_hook
-void init_mmio_simulator();
+extern "C" void init_mmio_simulator();
 
 __attribute__((constructor)) void InitEmulator() {
   init_mmio_simulator();

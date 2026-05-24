@@ -10,13 +10,12 @@ target_link_options(CANMonitor PRIVATE -specs=nano.specs -specs=nosys.specs -nos
 target_link_libraries(CANMonitor PRIVATE Newlib::libg Newlib::libnosys)
 
 # Remove glibc dependencies
-target_link_options(CANMonitor PRIVATE -Wl,--unresolved-symbols=ignore-all)
-target_link_options(CANMonitor PRIVATE 
-  -Wl,--defsym=__vprintf_chk=0 
-  -Wl,--defsym=__vfprintf_chk=0 
-  -Wl,--defsym=__vsnprintf_chk=0 
-  -Wl,--defsym=__fprintf_chk=0 
-  -Wl,--defsym=__printf_chk=0 
+target_link_options(CANMonitor PRIVATE
+  -Wl,--defsym=__vprintf_chk=0
+  -Wl,--defsym=__vfprintf_chk=0
+  -Wl,--defsym=__vsnprintf_chk=0
+  -Wl,--defsym=__fprintf_chk=0
+  -Wl,--defsym=__printf_chk=0
   -Wl,--defsym=__snprintf_chk=0
   -Wl,--defsym=__sprintf_chk=0
   -Wl,--defsym=__memcpy_chk=0

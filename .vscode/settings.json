@@ -2,7 +2,7 @@
   "saveAndRun": {
     "commands": [
       {
-        "cmd": " sh -c 'cd simulator; cargo clippy'",
+        "cmd": " sh -c 'cd simulator; cargo clippy'; sh -c 'cd simulator-mcu; cargo clippy'",
         "silent": true
       }
     ]

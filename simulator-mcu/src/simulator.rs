@@ -30,7 +30,6 @@ struct Device {
     vector_table: VectorTablePtr,
     active_interrupt: Option<u32>,
 
-    request_tx: std_mpsc::Sender<ThreadRequest>,
     response_rx: std_mpsc::Receiver<ThreadResponse>,
 }
 
@@ -56,7 +55,10 @@ async fn mpsc_rx_to_tokio<T: Send + 'static>(std_tx: std_mpsc::Sender<T>) -> tok
 }
 
 #[derive(Clone)]
-pub struct DynDevice(Arc<Mutex<Device>>);
+pub struct DynDevice {
+    inner: Arc<Mutex<Device>>,
+    request_tx: std_mpsc::Sender<ThreadRequest>,
+}
 
 impl DynDevice {
     pub async fn new(url: &str) -> Self {
@@ -65,10 +67,12 @@ impl DynDevice {
         let dev = Device {
             vector_table: VectorTablePtr::new_null(),
             active_interrupt: None,
-            request_tx,
             response_rx,
         };
-        let obj = Self(Arc::new(Mutex::new(dev)));
+        let obj = Self {
+            inner: Arc::new(Mutex::new(dev)),
+            request_tx,
+        };
         {
             let url = url.to_string();
             std::thread::Builder::new()
@@ -107,13 +111,8 @@ impl DynDevice {
                     } else {
                         0
                     };
-                    response_tx
-                        .send(ThreadResponse::OpenChannelResult(channel_id))
-                        .unwrap();
+                    let _ = response_tx.send(ThreadResponse::OpenChannelResult(channel_id));
                 }
-                /* Ok(ThreadRequest::Send(channel_id, data)) => {
-                    dc_client.send(channel_id, data).await.unwrap();
-                } */
                 Ok(ThreadRequest::SendBin(channel_id, data)) => {
                     if let Some(client) = dc_client.as_mut() {
                         if let Err(_err) = client.send_bin(channel_id, data).await {
@@ -149,15 +148,10 @@ impl DynDevice {
     }
 
     pub fn open_channel(&self, channel_name: String) -> ChannelID {
-        self.0
-            .lock()
-            .unwrap()
-            .request_tx
-            .send(ThreadRequest::OpenChannel(channel_name))
-            .unwrap();
+        let _ = self.request_tx.send(ThreadRequest::OpenChannel(channel_name));
 
         let response = self
-            .0
+            .inner
             .lock()
             .unwrap()
             .response_rx
@@ -169,47 +163,30 @@ impl DynDevice {
         }
     }
 
-    /* pub fn _send(&self, channel_id: ChannelID, data: String) {
-        self.0
-            .lock()
-            .unwrap()
-            .request_tx
-            .send(ThreadRequest::Send(channel_id, data))
-            .unwrap();
-    } */
     pub fn send_bin(&self, channel_id: ChannelID, data: Vec<u8>) {
-        self.0
-            .lock()
-            .unwrap()
-            .request_tx
-            .send(ThreadRequest::SendBin(channel_id, data))
-            .unwrap();
+        let _ = self.request_tx.send(ThreadRequest::SendBin(channel_id, data));
     }
+
     pub fn listen(
         &self,
         channel_id: ChannelID,
         tx: Option<std_mpsc::Sender<(ChannelID, String)>>,
         tx_bin: Option<std_mpsc::Sender<(ChannelID, Vec<u8>)>>,
     ) {
-        self.0
-            .lock()
-            .unwrap()
-            .request_tx
-            .send(ThreadRequest::Listen(channel_id, tx, tx_bin))
-            .unwrap();
+        let _ = self.request_tx.send(ThreadRequest::Listen(channel_id, tx, tx_bin));
     }
 
     pub fn get_vector_table(&self) -> VectorTablePtr {
-        self.0.lock().unwrap().vector_table
+        self.inner.lock().unwrap().vector_table
     }
 
     pub fn set_vector_table(&self, vector_table: VectorTablePtr) {
-        self.0.lock().unwrap().vector_table = vector_table;
+        self.inner.lock().unwrap().vector_table = vector_table;
     }
 
     pub fn fire_interrupt(&self, irqn: u32) {
         let handler: extern "C" fn() = if let Some(handler) = self
-            .0
+            .inner
             .lock()
             .unwrap()
             .vector_table
@@ -220,13 +197,13 @@ impl DynDevice {
             return;
         };
 
-        self.0.lock().unwrap().active_interrupt = Some(irqn);
+        self.inner.lock().unwrap().active_interrupt = Some(irqn);
         handler();
-        self.0.lock().unwrap().active_interrupt = None;
+        self.inner.lock().unwrap().active_interrupt = None;
     }
 
     pub fn get_active_interrupt(&self) -> Option<u32> {
-        self.0.lock().unwrap().active_interrupt
+        self.inner.lock().unwrap().active_interrupt
     }
 }
 
