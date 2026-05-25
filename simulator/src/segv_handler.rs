@@ -1,12 +1,17 @@
 use crate::context::Context;
-use crate::protocol::{Request, Response, CMD_READ, CMD_WRITE, RESP_DATA, RESP_INTERRUPT};
+use ipc_protocol::{Request, Response, CMD_READ, CMD_WRITE, RESP_DATA, RESP_INTERRUPT};
 use crate::syscall;
+use core::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use iced_x86::{Decoder, MemorySize, Mnemonic, OpKind};
 
 #[no_mangle]
-pub static mut WAITING_FOR_DATA: bool = false;
+pub static WAITING_FOR_DATA: AtomicBool = AtomicBool::new(false);
 #[no_mangle]
-pub static mut LAST_READ_VALUE: u64 = 0;
+pub static LAST_READ_VALUE: AtomicU64 = AtomicU64::new(0);
+#[no_mangle]
+pub static NEXT_SEQ: AtomicU16 = AtomicU16::new(1);
+#[no_mangle]
+pub static CURRENT_WAIT_SEQ: AtomicU16 = AtomicU16::new(0);
 
 fn print_mem_assign(direction: char, addr: u32, value: u32) {
     let mut buf = [0u8; 20];
@@ -42,63 +47,84 @@ pub extern "C" fn sigio_handler(
     _info: *mut core::ffi::c_void,
     context: *mut core::ffi::c_void,
 ) {
-    let mut resp = Response {
-        resp_type: 0,
-        _reserved: [0; 7],
-        value: 0,
-    };
-
     unsafe {
-        let n = syscall::read(
-            0,
-            &mut resp as *mut _ as *mut u8,
-            core::mem::size_of::<Response>(),
-        );
-        if n == core::mem::size_of::<Response>() as isize {
-            match resp.resp_type {
-                RESP_DATA => {
-                    LAST_READ_VALUE = resp.value;
-                    WAITING_FOR_DATA = false;
+        syscall::write(2, b"I\n".as_ptr(), 2);
+    }
+    loop {
+        let mut resp = Response {
+            resp_type: 0,
+            seq: 0,
+            _reserved: [0; 5],
+            value: 0,
+        };
+
+        unsafe {
+            let n = syscall::read(
+                0,
+                &mut resp as *mut _ as *mut u8,
+                core::mem::size_of::<Response>(),
+            );
+            if n <= 0 {
+                break;
+            }
+            if n == core::mem::size_of::<Response>() as isize {
+                match resp.resp_type {
+                    RESP_DATA => {
+                        if resp.seq == CURRENT_WAIT_SEQ.load(Ordering::SeqCst) {
+                            LAST_READ_VALUE.store(resp.value, Ordering::SeqCst);
+                            WAITING_FOR_DATA.store(false, Ordering::SeqCst);
+                        }
+                    }
+                    RESP_INTERRUPT => {
+                        inject_interrupt(context, resp.value);
+                    }
+                    _ => {}
                 }
-                RESP_INTERRUPT => {
-                    inject_interrupt(context, resp.value);
-                }
-                _ => {}
+            } else {
+                break;
             }
         }
     }
 }
 
 fn mmio_read(addr: u64, size: MemorySize) -> u64 {
+    let seq = NEXT_SEQ.fetch_add(1, Ordering::SeqCst);
     let req = Request {
         cmd: CMD_READ,
         size: get_memory_size(size),
-        _reserved: [0; 6],
+        seq,
+        _reserved: [0; 4],
         address: addr,
         value: 0,
         timestamp: 0,
     };
     unsafe {
+        CURRENT_WAIT_SEQ.store(seq, Ordering::SeqCst);
+        WAITING_FOR_DATA.store(true, Ordering::SeqCst);
+
         syscall::write(
             1,
             &req as *const _ as *const u8,
             core::mem::size_of::<Request>(),
         );
-        WAITING_FOR_DATA = true;
-        while WAITING_FOR_DATA {
+
+        while WAITING_FOR_DATA.load(Ordering::SeqCst) {
             core::hint::spin_loop();
         }
 
-        print_mem_assign('R', addr as u32, LAST_READ_VALUE as u32);
-        LAST_READ_VALUE
+        let val = LAST_READ_VALUE.load(Ordering::SeqCst);
+        print_mem_assign('R', addr as u32, val as u32);
+        val
     }
 }
 
 fn mmio_write(addr: u64, value: u64, size: MemorySize) {
+    let seq = NEXT_SEQ.fetch_add(1, Ordering::SeqCst);
     let req = Request {
         cmd: CMD_WRITE,
         size: get_memory_size(size),
-        _reserved: [0; 6],
+        seq,
+        _reserved: [0; 4],
         address: addr,
         value,
         timestamp: 0,

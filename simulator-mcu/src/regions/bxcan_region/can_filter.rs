@@ -1,6 +1,10 @@
 use super::fifo_index::FIFOIndex;
 use super::filter_scale::FilterScale;
 
+pub const BXCAN_FILTER_BANKS: usize = 14;
+pub const BXCAN_FILTER_REGS_START: usize = 0x40;
+pub const BXCAN_FILTER_REGS_END: usize = 0xAF;
+
 enum CANFilterState {
     Init,
     Active,
@@ -36,14 +40,14 @@ impl CANFilter {
 }
 
 pub struct CANFilters {
-    filters: [CANFilter; 28],
+    filters: [CANFilter; BXCAN_FILTER_BANKS],
     state: CANFilterState,
 }
 
 impl CANFilters {
     pub fn new() -> Self {
         Self {
-            filters: [CANFilter::new(); 28],
+            filters: [CANFilter::new(); BXCAN_FILTER_BANKS],
             state: CANFilterState::Init,
         }
     }
@@ -57,22 +61,16 @@ impl CANFilters {
     }
 
     fn write_master_register(&mut self, value: u32) {
-        if value & 0xFFFFFFFE != 0x2A1C0E00 {
-            panic!(
-                "Write to bxCAN filter register with unsupported value {:08x}",
-                value
-            );
-        }
         if value & 0x1 != 0 {
-            self.state = CANFilterState::Active;
-        } else {
             self.state = CANFilterState::Init;
+        } else {
+            self.state = CANFilterState::Active;
         }
     }
 
     fn encode_mode_register(&self) -> u32 {
         let mut value = 0;
-        for i in 0..13 {
+        for i in 0..BXCAN_FILTER_BANKS {
             if let CANFilterType::List = self.filters[i].filter_type {
                 value |= 1 << i;
             }
@@ -81,9 +79,14 @@ impl CANFilters {
     }
 
     fn write_mode_register(&mut self, value: u32) {
-        for i in 0..13 {
-            let filter_id = i;
-            self.filters[i].filter_type = if value & (1 << filter_id) != 0 {
+        if value & !( (1 << BXCAN_FILTER_BANKS) - 1 ) != 0 {
+            panic!(
+                "Write to bxCAN filter mode register with unsupported value {:08x}",
+                value
+            );
+        }
+        for i in 0..BXCAN_FILTER_BANKS {
+            self.filters[i].filter_type = if value & (1 << i) != 0 {
                 CANFilterType::List
             } else {
                 CANFilterType::Mask
@@ -93,7 +96,7 @@ impl CANFilters {
 
     fn encode_scale_register(&self) -> u32 {
         let mut value = 0;
-        for i in 0..13 {
+        for i in 0..BXCAN_FILTER_BANKS {
             if let FilterScale::Scale32Bit = self.filters[i].scale {
                 value |= 1 << i;
             }
@@ -102,15 +105,14 @@ impl CANFilters {
     }
 
     fn write_scale_register(&mut self, value: u32) {
-        if value & 0xFFFFFC00 != 0 {
+        if value & !( (1 << BXCAN_FILTER_BANKS) - 1 ) != 0 {
             panic!(
                 "Write to bxCAN filter scale register with unsupported value {:08x}",
                 value
             );
         }
-        for i in 0..13 {
-            let filter_id = i;
-            self.filters[i].scale = if value & (1 << filter_id) != 0 {
+        for i in 0..BXCAN_FILTER_BANKS {
+            self.filters[i].scale = if value & (1 << i) != 0 {
                 FilterScale::Scale32Bit
             } else {
                 FilterScale::Scale16Bit
@@ -120,7 +122,7 @@ impl CANFilters {
 
     fn encode_filter_assignment_register(&self) -> u32 {
         let mut value = 0;
-        for i in 0..13 {
+        for i in 0..BXCAN_FILTER_BANKS {
             if let FIFOIndex::FIFO1 = self.filters[i].fifo_assignment {
                 value |= 1 << i;
             }
@@ -129,15 +131,14 @@ impl CANFilters {
     }
 
     fn write_filter_assignment_register(&mut self, value: u32) {
-        if value & 0xFFFFFE00 != 0 {
+        if value & !( (1 << BXCAN_FILTER_BANKS) - 1 ) != 0 {
             panic!(
                 "Write to bxCAN filter FIFO assignment register with unsupported value {:08x}",
                 value
             );
         }
-        for i in 0..13 {
-            let filter_id = i;
-            self.filters[i].fifo_assignment = if value & (1 << filter_id) != 0 {
+        for i in 0..BXCAN_FILTER_BANKS {
+            self.filters[i].fifo_assignment = if value & (1 << i) != 0 {
                 FIFOIndex::FIFO1
             } else {
                 FIFOIndex::FIFO0
@@ -147,7 +148,7 @@ impl CANFilters {
 
     fn encode_activation_register(&self) -> u32 {
         let mut value = 0;
-        for i in 0..13 {
+        for i in 0..BXCAN_FILTER_BANKS {
             if self.filters[i].activated {
                 value |= 1 << i;
             }
@@ -156,25 +157,25 @@ impl CANFilters {
     }
 
     fn write_activation_register(&mut self, value: u32) {
-        if value & 0xFFFFC000 != 0 {
+        if value & !( (1 << BXCAN_FILTER_BANKS) - 1 ) != 0 {
             panic!(
                 "Write to bxCAN filter activation register with unsupported value {:08x}",
                 value
             );
         }
-        for i in 0..13 {
-            let filter_id = i;
-            let activated = (value & (1 << filter_id)) != 0;
+        for i in 0..BXCAN_FILTER_BANKS {
+            let activated = (value & (1 << i)) != 0;
             self.filters[i].activated = activated;
         }
     }
 
     fn encode_bank_register(&self, offset: usize) -> u32 {
-        let sub_offset = offset - 0x40;
-        let filter_id = sub_offset / 2;
-        let bank_part = sub_offset % 2;
-        if filter_id >= 13 {
-            panic!(
+        let sub_offset = offset - BXCAN_FILTER_REGS_START;
+        let filter_id = sub_offset / 8;
+        let bank_part = (sub_offset % 8) / 4;
+        
+        if filter_id >= BXCAN_FILTER_BANKS {
+             panic!(
                 "Read from undefined bxCAN filter register at +{:08x}",
                 offset
             );
@@ -189,10 +190,11 @@ impl CANFilters {
     }
 
     fn write_bank_register(&mut self, offset: usize, value: u32) {
-        let sub_offset = offset - 0x40;
-        let filter_id = sub_offset / 2;
-        let bank_part = sub_offset % 2;
-        if filter_id >= 13 {
+        let sub_offset = offset - BXCAN_FILTER_REGS_START;
+        let filter_id = sub_offset / 8;
+        let bank_part = (sub_offset % 8) / 4;
+
+        if filter_id >= BXCAN_FILTER_BANKS {
             panic!(
                 "Write to undefined bxCAN filter register at +{:08x} with value {:08x}",
                 offset, value
@@ -233,7 +235,7 @@ impl CANFilters {
             return true;
         }
 
-        if (0x40..=0xAC).contains(&offset) {
+        if (BXCAN_FILTER_REGS_START..=BXCAN_FILTER_REGS_END).contains(&offset) {
             self.write_bank_register(offset, value);
             return true;
         }
@@ -258,7 +260,7 @@ impl CANFilters {
             return Some(self.encode_activation_register());
         }
 
-        if (0x40..=0xAC).contains(&offset) {
+        if (BXCAN_FILTER_REGS_START..=BXCAN_FILTER_REGS_END).contains(&offset) {
             return Some(self.encode_bank_register(offset));
         }
 

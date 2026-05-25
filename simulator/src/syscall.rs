@@ -70,9 +70,14 @@ pub struct SigAction {
     pub sa_mask: u64,
 }
 
-pub const SA_SIGINFO: u64 = 0x00000004 | 0x04000000; // SA_SIGINFO | SA_RESTORER
+pub const SA_SIGINFO: u64 = 0x00000004;
+pub const SA_RESTORER: u64 = 0x04000000;
+pub const SA_NODEFER: u64 = 0x40000000;
+
 pub const SIGSEGV: i32 = 11;
 pub const SIGIO: i32 = 29;
+
+pub const SA_SIGINFO_FULL: u64 = SA_SIGINFO | SA_RESTORER;
 
 pub unsafe fn getpid() -> i32 {
     let ret: i32;

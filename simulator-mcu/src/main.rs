@@ -9,12 +9,25 @@ use std::sync::Mutex;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
-mod protocol;
 mod regions;
 mod simulator;
 mod vector_table;
 
-use crate::protocol::{Request, Response, CMD_READ, CMD_WRITE, RESP_DATA, RESP_ERROR};
+use ipc_protocol::{
+    CMD_READY, CMD_READ, CMD_WRITE, Request, Response, RESP_DATA, RESP_ERROR,
+};
+
+/// --- Hardware Constants (STM32F303x8) ---
+pub const FLASH_BASE: usize = 0x4002_2000;
+pub const RCC_BASE: usize = 0x4002_1000;
+pub const GPIOA_BASE: usize = 0x4800_0000;
+pub const GPIOB_BASE: usize = 0x4800_0400;
+pub const GPIOC_BASE: usize = 0x4800_0800;
+pub const USART2_BASE: usize = 0x4000_4400;
+pub const BXCAN_BASE: usize = 0x4000_6400;
+pub const TIM6_BASE: usize = 0x4000_1000;
+pub const NVIC_BASE: usize = 0xE000_E100;
+pub const SCB_BASE: usize = 0xE000_ED00;
 
 async fn init_sim() {
     println!("Parent: Connecting to DevConsole...");
@@ -22,27 +35,19 @@ async fn init_sim() {
     println!("Parent: Connected to DevConsole.");
 
     let mut handlers = Vec::<DynMMIOHandler>::new();
-    handlers.push(FlashRegion::new_boxed(dev.clone(), 0x4002_2000));
-    handlers.push(RCCRegion::new_boxed(dev.clone(), 0x4002_1000));
+    handlers.push(FlashRegion::new_boxed(dev.clone(), FLASH_BASE));
+    handlers.push(RCCRegion::new_boxed(dev.clone(), RCC_BASE));
     handlers.push(BridgeRegion::new_boxed(dev.clone(), 0xabcd_0000));
-    handlers.push(GPIORegion::new_gpioa(dev.clone(), 0x48000000));
-    handlers.push(GPIORegion::new_gpiob(dev.clone(), 0x48000400));
-    handlers.push(GPIORegion::new_boxed(dev.clone(), 0x48000800, GPIOPort::C));
-    handlers.push(GPIORegion::new_boxed(dev.clone(), 0x48000C00, GPIOPort::D));
-    handlers.push(GPIORegion::new_boxed(dev.clone(), 0x48001400, GPIOPort::F));
-    handlers.push(UARTRegion::new_boxed(dev.clone(), 0x40004400, 2));
-    handlers.push(BXCanRegion::new_boxed(dev.clone(), 0x40006400).await);
-    handlers.push(SCBRegion::new_boxed(dev.clone(), 0xE000_ED00));
-    handlers.push(NVICRegion::new_boxed(dev.clone(), 0xE000_E100));
-    handlers.push(BasicTimerRegion::new_boxed(dev.clone(), 0x40001000));
+    handlers.push(GPIORegion::new_gpioa(dev.clone(), GPIOA_BASE));
+    handlers.push(GPIORegion::new_gpiob(dev.clone(), GPIOB_BASE));
+    handlers.push(GPIORegion::new_boxed(dev.clone(), GPIOC_BASE, GPIOPort::C));
+    handlers.push(UARTRegion::new_boxed(dev.clone(), USART2_BASE, 2));
+    handlers.push(BXCanRegion::new_boxed(dev.clone(), BXCAN_BASE).await);
+    handlers.push(SCBRegion::new_boxed(dev.clone(), SCB_BASE));
+    handlers.push(NVICRegion::new_boxed(dev.clone(), NVIC_BASE));
+    handlers.push(BasicTimerRegion::new_boxed(dev.clone(), TIM6_BASE));
 
-    let sim = Simulator::new(dev, handlers);
-    let sim = RefCell::new(sim);
-
-    match SIMULATOR.set(Mutex::new(sim)) {
-        Ok(_) => (),
-        Err(_) => panic!("Simulator is already initialized"),
-    }
+    SIMULATOR.set(Mutex::new(RefCell::new(Simulator::new(dev, handlers)))).ok();
 }
 
 #[tokio::main]
@@ -71,19 +76,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut request_buf = [0u8; std::mem::size_of::<Request>()];
 
+    println!("Parent: Waiting for READY packet from child...");
+    loop {
+        child_stdout.read_exact(&mut request_buf).await?;
+        let req: Request = unsafe { std::ptr::read_unaligned(request_buf.as_ptr() as *const Request) };
+        let req_cmd = req.cmd;
+        let req_addr = req.address;
+        if req_cmd == CMD_READY {
+            println!("Parent: Received READY. Starting main loop.");
+            break;
+        } else {
+            println!("Parent: Ignoring early request cmd={} addr=0x{:x}", req_cmd, req_addr);
+        }
+    }
+
     println!("Parent: Entering main loop...");
     loop {
         match child_stdout.read_exact(&mut request_buf).await {
             Ok(_) => {
-                let req: Request =
-                    unsafe { std::ptr::read_unaligned(request_buf.as_ptr() as *const Request) };
+                let req: Request = unsafe { std::ptr::read_unaligned(request_buf.as_ptr() as *const Request) };
                 let req_addr = req.address;
                 let req_cmd = req.cmd;
                 let req_val = req.value;
+                let req_seq = req.seq;
 
                 let mut response = Response {
                     resp_type: RESP_DATA,
-                    _reserved: [0; 7],
+                    seq: req_seq,
+                    _reserved: [0; 5],
                     value: 0,
                 };
 

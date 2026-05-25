@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 iced-x86 = { version = "1.21.0", default-features = false, features = ["decoder", "no_std"] }
+ipc-protocol = { path = "../ipc-protocol" }
 
 [lib]
 crate-type = ["staticlib", "cdylib"]

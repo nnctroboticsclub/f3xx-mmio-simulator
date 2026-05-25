@@ -4,7 +4,6 @@ use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 pub mod context;
-pub mod protocol;
 pub mod segv_handler;
 pub mod syscall;
 
@@ -67,34 +66,46 @@ pub extern "C" fn rust_eh_personality() {}
 #[no_mangle]
 pub extern "C" fn init_mmio_simulator() {
     unsafe {
-        syscall::write(2, b"1\n".as_ptr(), 2);
         let pid = syscall::getpid();
         syscall::fcntl(0, syscall::F_SETOWN, pid as i64);
-        syscall::write(2, b"2\n".as_ptr(), 2);
+
+        let sa_segv = syscall::SigAction {
+            sa_handler: segv_handler::mmio_segv_handler as *const () as usize,
+            sa_flags: syscall::SA_SIGINFO_FULL | syscall::SA_NODEFER,
+            sa_restorer: syscall::restore_rt as *const () as usize,
+            sa_mask: 0,
+        };
+        syscall::sigaction(syscall::SIGSEGV, &sa_segv, core::ptr::null_mut());
+
+        let sa_io = syscall::SigAction {
+            sa_handler: segv_handler::sigio_handler as *const () as usize,
+            sa_flags: syscall::SA_SIGINFO_FULL | syscall::SA_NODEFER,
+            sa_restorer: syscall::restore_rt as *const () as usize,
+            sa_mask: 0,
+        };
+        syscall::sigaction(syscall::SIGIO, &sa_io, core::ptr::null_mut());
+
         syscall::fcntl(
             0,
             syscall::F_SETFL,
             (syscall::O_ASYNC | syscall::O_NONBLOCK) as i64,
         );
-        syscall::write(2, b"3\n".as_ptr(), 2);
 
-        let sa_segv = syscall::SigAction {
-            sa_handler: segv_handler::mmio_segv_handler as *const () as usize,
-            sa_flags: syscall::SA_SIGINFO,
-            sa_restorer: syscall::restore_rt as *const () as usize,
-            sa_mask: 0,
+        // Send READY packet to parent
+        let ready = ipc_protocol::Request {
+            cmd: ipc_protocol::CMD_READY,
+            size: 0,
+            seq: 0,
+            _reserved: [0; 4],
+            address: 0,
+            value: 0,
+            timestamp: 0,
         };
-        syscall::sigaction(syscall::SIGSEGV, &sa_segv, core::ptr::null_mut());
-        syscall::write(2, b"4\n".as_ptr(), 2);
-
-        let sa_io = syscall::SigAction {
-            sa_handler: segv_handler::sigio_handler as *const () as usize,
-            sa_flags: syscall::SA_SIGINFO,
-            sa_restorer: syscall::restore_rt as *const () as usize,
-            sa_mask: 0,
-        };
-        syscall::sigaction(syscall::SIGIO, &sa_io, core::ptr::null_mut());
-        syscall::write(2, b"5\n".as_ptr(), 2);
+        syscall::write(
+            1,
+            &ready as *const _ as *const u8,
+            core::mem::size_of::<ipc_protocol::Request>(),
+        );
     }
 }
 
