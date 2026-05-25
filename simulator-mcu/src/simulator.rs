@@ -148,7 +148,9 @@ impl DynDevice {
     }
 
     pub fn open_channel(&self, channel_name: String) -> ChannelID {
-        let _ = self.request_tx.send(ThreadRequest::OpenChannel(channel_name));
+        let _ = self
+            .request_tx
+            .send(ThreadRequest::OpenChannel(channel_name));
 
         let response = self
             .inner
@@ -164,7 +166,9 @@ impl DynDevice {
     }
 
     pub fn send_bin(&self, channel_id: ChannelID, data: Vec<u8>) {
-        let _ = self.request_tx.send(ThreadRequest::SendBin(channel_id, data));
+        let _ = self
+            .request_tx
+            .send(ThreadRequest::SendBin(channel_id, data));
     }
 
     pub fn listen(
@@ -173,7 +177,9 @@ impl DynDevice {
         tx: Option<std_mpsc::Sender<(ChannelID, String)>>,
         tx_bin: Option<std_mpsc::Sender<(ChannelID, Vec<u8>)>>,
     ) {
-        let _ = self.request_tx.send(ThreadRequest::Listen(channel_id, tx, tx_bin));
+        let _ = self
+            .request_tx
+            .send(ThreadRequest::Listen(channel_id, tx, tx_bin));
     }
 
     pub fn get_vector_table(&self) -> VectorTablePtr {

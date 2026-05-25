@@ -1,6 +1,2 @@
 [build]
-target = ".cargo/x86_64-unknown-linux-gnu.json"
-
-[unstable]
-json-target-spec = true
-build-std = ["core", "alloc", "std"]
+target = "x86_64-unknown-linux-gnu"
