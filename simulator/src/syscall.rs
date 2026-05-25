@@ -1,5 +1,8 @@
 use core::arch::global_asm;
 
+/// # Safety
+///
+/// This function can be called from any context.
 pub unsafe fn write(fd: i32, buf: *const u8, count: usize) -> isize {
     let ret: isize;
     core::arch::asm!(
@@ -14,6 +17,9 @@ pub unsafe fn write(fd: i32, buf: *const u8, count: usize) -> isize {
     ret
 }
 
+/// # Safety
+///
+/// This function can be called from any context.
 pub unsafe fn read(fd: i32, buf: *mut u8, count: usize) -> isize {
     let ret: isize;
     core::arch::asm!(
@@ -28,6 +34,9 @@ pub unsafe fn read(fd: i32, buf: *mut u8, count: usize) -> isize {
     ret
 }
 
+/// # Safety
+///
+/// This function can be called from any context.
 pub unsafe fn fcntl(fd: i32, cmd: i32, arg: i64) -> isize {
     let ret: isize;
     core::arch::asm!(
@@ -47,6 +56,9 @@ pub const F_SETFL: i32 = 4;
 pub const O_ASYNC: i32 = 0o20000;
 pub const O_NONBLOCK: i32 = 0o4000;
 
+/// # Safety
+///
+/// This function can be called from any context.
 pub unsafe fn sigaction(signum: i32, act: *const SigAction, oldact: *mut SigAction) -> isize {
     let ret: isize;
     core::arch::asm!(
@@ -79,6 +91,9 @@ pub const SIGIO: i32 = 29;
 
 pub const SA_SIGINFO_FULL: u64 = SA_SIGINFO | SA_RESTORER;
 
+/// # Safety
+///
+/// This function can be called from any context.
 pub unsafe fn getpid() -> i32 {
     let ret: i32;
     core::arch::asm!(
@@ -88,6 +103,18 @@ pub unsafe fn getpid() -> i32 {
         clobber_abi("system")
     );
     ret
+}
+
+/// # Safety
+/// This function can be called from any context.
+pub unsafe fn exit(status: i32) -> ! {
+    core::arch::asm!(
+        "syscall",
+        in("rax") 60,
+        in("rdi") status,
+        options(noreturn),
+        clobber_abi("system")
+    );
 }
 
 global_asm!(

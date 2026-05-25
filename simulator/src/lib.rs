@@ -109,6 +109,9 @@ pub extern "C" fn init_mmio_simulator() {
     }
 }
 
+/// # Safety
+///
+/// This function can only be called from the single-threaded context of the signal handler.
 pub unsafe fn write_hex(fd: i32, val: u64) {
     let mut buf = [0u8; 18];
     buf[0] = b'0';

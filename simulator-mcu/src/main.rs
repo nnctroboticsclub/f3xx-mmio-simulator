@@ -21,6 +21,9 @@ pub const RCC_BASE: usize = 0x4002_1000;
 pub const GPIOA_BASE: usize = 0x4800_0000;
 pub const GPIOB_BASE: usize = 0x4800_0400;
 pub const GPIOC_BASE: usize = 0x4800_0800;
+pub const GPIOD_BASE: usize = 0x4800_0C00;
+pub const GPIOE_BASE: usize = 0x4800_1000;
+pub const GPIOF_BASE: usize = 0x4800_1400;
 pub const USART2_BASE: usize = 0x4000_4400;
 pub const BXCAN_BASE: usize = 0x4000_6400;
 pub const TIM6_BASE: usize = 0x4000_1000;
@@ -39,6 +42,9 @@ async fn init_sim() {
     handlers.push(GPIORegion::new_gpioa(dev.clone(), GPIOA_BASE));
     handlers.push(GPIORegion::new_gpiob(dev.clone(), GPIOB_BASE));
     handlers.push(GPIORegion::new_boxed(dev.clone(), GPIOC_BASE, GPIOPort::C));
+    handlers.push(GPIORegion::new_boxed(dev.clone(), GPIOD_BASE, GPIOPort::D));
+    handlers.push(GPIORegion::new_boxed(dev.clone(), GPIOE_BASE, GPIOPort::E));
+    handlers.push(GPIORegion::new_boxed(dev.clone(), GPIOF_BASE, GPIOPort::F));
     handlers.push(UARTRegion::new_boxed(dev.clone(), USART2_BASE, 2));
     handlers.push(BXCanRegion::new_boxed(dev.clone(), BXCAN_BASE).await);
     handlers.push(SCBRegion::new_boxed(dev.clone(), SCB_BASE));
@@ -124,10 +130,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         CMD_READ => {
                             let val = handler.read(req_addr as usize) as u64;
                             response.value = val;
-                            // println!("Parent: Read from 0x{:08X} ==> 0x{:08X}", req_addr, val);
+                            println!("Parent: Read from 0x{:08X} ==> 0x{:08X}", req_addr, val);
                         }
                         CMD_WRITE => {
-                            // println!("Parent: Write to 0x{:08X} <== 0x{:08X}", req_addr, req_val);
+                            println!("Parent: Write to 0x{:08X} <== 0x{:08X}", req_addr, req_val);
                             handler.write(req_addr as usize, req_val);
                         }
                         _ => {

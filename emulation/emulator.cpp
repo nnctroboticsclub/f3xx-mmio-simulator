@@ -25,44 +25,57 @@ extern int main();
 void start_c() {
   if (__init_array_start && __init_array_end) {
     for (void (**p)(void) = __init_array_start; p < __init_array_end; ++p) {
-      if (*p && (uintptr_t)*p != 1) (*p)();
+      if (*p && (uintptr_t)*p != 1)
+        (*p)();
     }
   }
 
   main();
 
   // exit
-  asm volatile("mov $60, %%rax\n"
-               "mov $0, %%rdi\n"
-               "syscall\n"
-               : : : "rax", "rdi");
+  asm volatile(
+      "mov $60, %%rax\n"
+      "mov $0, %%rdi\n"
+      "syscall\n"
+      :
+      :
+      : "rax", "rdi");
 }
 
-asm(
-  ".global _start\n"
-  "_start:\n"
-  "  and $0xfffffffffffffff0, %rsp\n"
-  "  call start_c\n"
-  "  mov $60, %rax\n"
-  "  xor %rdi, %rdi\n"
-  "  syscall\n"
-);
+asm(".global __restore_rt\n"
+    "__restore_rt:\n"
+    "  mov $15, %rax\n"
+    "  syscall\n"
+    ".global _start\n"
+    "_start:\n"
+    "  and $0xfffffffffffffff0, %rsp\n"
+    "  call start_c\n"
+    "  mov $60, %rax\n"
+    "  xor %rdi, %rdi\n"
+    "  syscall\n");
 
 void _fini() {}
 void* __dso_handle = (void*)0;
 
 // MMIO stubs
-uint64_t mmio_read(uintptr_t addr) { return 0; }
+uint64_t mmio_read(uintptr_t addr) {
+  return 0;
+}
 void mmio_write(uintptr_t addr, uint64_t val) {}
 
 // SystemCoreClock
 uint32_t SystemCoreClock = 8000000;
 
 // Newlib syscall stubs
-void* _sbrk(intptr_t incr) { return (void*)-1; }
-int _kill(int pid, int sig) { return -1; }
-int _getpid(void) { return 1; }
-
+void* _sbrk(intptr_t incr) {
+  return (void*)-1;
+}
+int _kill(int pid, int sig) {
+  return -1;
+}
+int _getpid(void) {
+  return 1;
+}
 }
 
 extern "C" void init_mmio_simulator();

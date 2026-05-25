@@ -9,6 +9,7 @@ pub enum GPIOPort {
     B,
     C,
     D,
+    E,
     F,
 }
 

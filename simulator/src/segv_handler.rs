@@ -1,5 +1,5 @@
-use crate::context::Context;
 use crate::syscall;
+use crate::{context::Context, syscall::exit};
 use core::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use iced_x86::{Decoder, MemorySize, Mnemonic, OpKind};
 use ipc_protocol::{Request, Response, CMD_READ, CMD_WRITE, RESP_DATA, RESP_INTERRUPT};
@@ -13,36 +13,11 @@ pub static NEXT_SEQ: AtomicU16 = AtomicU16::new(1);
 #[no_mangle]
 pub static CURRENT_WAIT_SEQ: AtomicU16 = AtomicU16::new(0);
 
-fn print_mem_assign(direction: char, addr: u32, value: u32) {
-    let mut buf = [0u8; 20];
-    let hex_table = b"0123456789abcdef";
-    buf[0] = direction as u8;
-    buf[1] = b' ';
-    buf[2] = hex_table[((addr >> 28) & 0xf) as usize];
-    buf[3] = hex_table[((addr >> 24) & 0xf) as usize];
-    buf[4] = hex_table[((addr >> 20) & 0xf) as usize];
-    buf[5] = hex_table[((addr >> 16) & 0xf) as usize];
-    buf[6] = hex_table[((addr >> 12) & 0xf) as usize];
-    buf[7] = hex_table[((addr >> 8) & 0xf) as usize];
-    buf[8] = hex_table[((addr >> 4) & 0xf) as usize];
-    buf[9] = hex_table[(addr & 0xf) as usize];
-    buf[10] = b' ';
-    buf[11] = hex_table[((value >> 28) & 0xf) as usize];
-    buf[12] = hex_table[((value >> 24) & 0xf) as usize];
-    buf[13] = hex_table[((value >> 20) & 0xf) as usize];
-    buf[14] = hex_table[((value >> 16) & 0xf) as usize];
-    buf[15] = hex_table[((value >> 12) & 0xf) as usize];
-    buf[16] = hex_table[((value >> 8) & 0xf) as usize];
-    buf[17] = hex_table[((value >> 4) & 0xf) as usize];
-    buf[18] = hex_table[(value & 0xf) as usize];
-    buf[19] = b'\n';
-    unsafe {
-        syscall::write(2, buf.as_ptr(), 20);
-    }
-}
-
+/// # Safety
+///
+/// This function is marked as unsafe because it dereferences 'context' pointer, which is provided by non-Rust context.
 #[no_mangle]
-pub extern "C" fn sigio_handler(
+pub unsafe extern "C" fn sigio_handler(
     _signum: i32,
     _info: *mut core::ffi::c_void,
     context: *mut core::ffi::c_void,
@@ -55,31 +30,29 @@ pub extern "C" fn sigio_handler(
             value: 0,
         };
 
-        unsafe {
-            let n = syscall::read(
+        let n = unsafe {
+            syscall::read(
                 0,
                 &mut resp as *mut _ as *mut u8,
                 core::mem::size_of::<Response>(),
-            );
-            if n <= 0 {
-                break;
-            }
-            if n == core::mem::size_of::<Response>() as isize {
-                match resp.resp_type {
-                    RESP_DATA => {
-                        if resp.seq == CURRENT_WAIT_SEQ.load(Ordering::SeqCst) {
-                            LAST_READ_VALUE.store(resp.value, Ordering::SeqCst);
-                            WAITING_FOR_DATA.store(false, Ordering::SeqCst);
-                        }
-                    }
-                    RESP_INTERRUPT => {
-                        inject_interrupt(context, resp.value);
-                    }
-                    _ => {}
+            )
+        };
+        if n <= 0 {
+            break;
+        }
+        if n == core::mem::size_of::<Response>() as isize {
+            match resp.resp_type {
+                RESP_DATA if resp.seq == CURRENT_WAIT_SEQ.load(Ordering::SeqCst) => {
+                    LAST_READ_VALUE.store(resp.value, Ordering::SeqCst);
+                    WAITING_FOR_DATA.store(false, Ordering::SeqCst);
                 }
-            } else {
-                break;
+                RESP_INTERRUPT => unsafe {
+                    inject_interrupt(context, resp.value);
+                },
+                _ => {}
             }
+        } else {
+            break;
         }
     }
 }
@@ -109,9 +82,7 @@ fn mmio_read(addr: u64, size: MemorySize) -> u64 {
             core::hint::spin_loop();
         }
 
-        let val = LAST_READ_VALUE.load(Ordering::SeqCst);
-        // print_mem_assign('R', addr as u32, val as u32);
-        val
+        LAST_READ_VALUE.load(Ordering::SeqCst)
     }
 }
 
@@ -133,7 +104,6 @@ fn mmio_write(addr: u64, value: u64, size: MemorySize) {
             core::mem::size_of::<Request>(),
         );
     }
-    // print_mem_assign('W', addr as u32, value as u32);
 }
 
 fn get_memory_size(ms: iced_x86::MemorySize) -> u8 {
@@ -202,13 +172,11 @@ pub extern "C" fn mmio_segv_handler(
                 *flags |= 1 << 6;
             }
         }
-        _ => {
-            unsafe {
-                syscall::write(2, b"Unknown Mnemonic: ".as_ptr(), 18);
-                crate::write_hex(2, inst.mnemonic() as u64);
-            }
-            loop {}
-        }
+        _ => unsafe {
+            syscall::write(2, b"Unknown Mnemonic: ".as_ptr(), 18);
+            crate::write_hex(2, inst.mnemonic() as u64);
+            exit(1);
+        },
     }
 
     unsafe {
