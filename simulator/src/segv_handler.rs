@@ -1,8 +1,8 @@
 use crate::context::Context;
-use ipc_protocol::{Request, Response, CMD_READ, CMD_WRITE, RESP_DATA, RESP_INTERRUPT};
 use crate::syscall;
 use core::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use iced_x86::{Decoder, MemorySize, Mnemonic, OpKind};
+use ipc_protocol::{Request, Response, CMD_READ, CMD_WRITE, RESP_DATA, RESP_INTERRUPT};
 
 #[no_mangle]
 pub static WAITING_FOR_DATA: AtomicBool = AtomicBool::new(false);
@@ -47,9 +47,6 @@ pub extern "C" fn sigio_handler(
     _info: *mut core::ffi::c_void,
     context: *mut core::ffi::c_void,
 ) {
-    unsafe {
-        syscall::write(2, b"I\n".as_ptr(), 2);
-    }
     loop {
         let mut resp = Response {
             resp_type: 0,
@@ -113,7 +110,7 @@ fn mmio_read(addr: u64, size: MemorySize) -> u64 {
         }
 
         let val = LAST_READ_VALUE.load(Ordering::SeqCst);
-        print_mem_assign('R', addr as u32, val as u32);
+        // print_mem_assign('R', addr as u32, val as u32);
         val
     }
 }
@@ -136,7 +133,7 @@ fn mmio_write(addr: u64, value: u64, size: MemorySize) {
             core::mem::size_of::<Request>(),
         );
     }
-    print_mem_assign('W', addr as u32, value as u32);
+    // print_mem_assign('W', addr as u32, value as u32);
 }
 
 fn get_memory_size(ms: iced_x86::MemorySize) -> u8 {

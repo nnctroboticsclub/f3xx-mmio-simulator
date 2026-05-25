@@ -13,9 +13,7 @@ mod regions;
 mod simulator;
 mod vector_table;
 
-use ipc_protocol::{
-    CMD_READY, CMD_READ, CMD_WRITE, Request, Response, RESP_DATA, RESP_ERROR,
-};
+use ipc_protocol::{Request, Response, CMD_READ, CMD_READY, CMD_WRITE, RESP_DATA, RESP_ERROR};
 
 /// --- Hardware Constants (STM32F303x8) ---
 pub const FLASH_BASE: usize = 0x4002_2000;
@@ -47,7 +45,9 @@ async fn init_sim() {
     handlers.push(NVICRegion::new_boxed(dev.clone(), NVIC_BASE));
     handlers.push(BasicTimerRegion::new_boxed(dev.clone(), TIM6_BASE));
 
-    SIMULATOR.set(Mutex::new(RefCell::new(Simulator::new(dev, handlers)))).ok();
+    SIMULATOR
+        .set(Mutex::new(RefCell::new(Simulator::new(dev, handlers))))
+        .ok();
 }
 
 #[tokio::main]
@@ -79,14 +79,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Parent: Waiting for READY packet from child...");
     loop {
         child_stdout.read_exact(&mut request_buf).await?;
-        let req: Request = unsafe { std::ptr::read_unaligned(request_buf.as_ptr() as *const Request) };
+        let req: Request =
+            unsafe { std::ptr::read_unaligned(request_buf.as_ptr() as *const Request) };
         let req_cmd = req.cmd;
         let req_addr = req.address;
         if req_cmd == CMD_READY {
             println!("Parent: Received READY. Starting main loop.");
             break;
         } else {
-            println!("Parent: Ignoring early request cmd={} addr=0x{:x}", req_cmd, req_addr);
+            println!(
+                "Parent: Ignoring early request cmd={} addr=0x{:x}",
+                req_cmd, req_addr
+            );
         }
     }
 
@@ -94,7 +98,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         match child_stdout.read_exact(&mut request_buf).await {
             Ok(_) => {
-                let req: Request = unsafe { std::ptr::read_unaligned(request_buf.as_ptr() as *const Request) };
+                let req: Request =
+                    unsafe { std::ptr::read_unaligned(request_buf.as_ptr() as *const Request) };
                 let req_addr = req.address;
                 let req_cmd = req.cmd;
                 let req_val = req.value;
@@ -119,10 +124,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         CMD_READ => {
                             let val = handler.read(req_addr as usize) as u64;
                             response.value = val;
-                            println!("Parent: Read from 0x{:08X} ==> 0x{:08X}", req_addr, val);
+                            // println!("Parent: Read from 0x{:08X} ==> 0x{:08X}", req_addr, val);
                         }
                         CMD_WRITE => {
-                            println!("Parent: Write to 0x{:08X} <== 0x{:08X}", req_addr, req_val);
+                            // println!("Parent: Write to 0x{:08X} <== 0x{:08X}", req_addr, req_val);
                             handler.write(req_addr as usize, req_val);
                         }
                         _ => {
