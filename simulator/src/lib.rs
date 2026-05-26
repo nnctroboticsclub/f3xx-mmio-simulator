@@ -1,11 +1,16 @@
 #![no_std]
 
+pub mod context;
+pub mod protocol;
+pub mod segv_handler;
+pub mod syscall;
+
 use core::panic::PanicInfo;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-pub mod context;
-pub mod segv_handler;
-pub mod syscall;
+use crate::protocol::send_ready;
+use crate::segv_handler::{mmio_segv_handler, sigio_handler};
+use crate::syscall::restore_rt;
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
@@ -21,6 +26,21 @@ fn panic(info: &PanicInfo) -> ! {
     }
     unsafe {
         core::arch::asm!("mov rax, 60", "mov rdi, 1", "syscall", options(noreturn));
+    }
+}
+
+extern "C" {
+    fn malloc(size: usize) -> *mut u8;
+    fn free(ptr: *mut u8);
+}
+
+struct LibcAllocator {}
+unsafe impl core::alloc::GlobalAlloc for LibcAllocator {
+    unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
+        malloc(layout.size())
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, _layout: core::alloc::Layout) {
+        free(ptr)
     }
 }
 
@@ -70,17 +90,17 @@ pub extern "C" fn init_mmio_simulator() {
         syscall::fcntl(0, syscall::F_SETOWN, pid as i64);
 
         let sa_segv = syscall::SigAction {
-            sa_handler: segv_handler::mmio_segv_handler as *const () as usize,
+            sa_handler: mmio_segv_handler as *const () as usize,
             sa_flags: syscall::SA_SIGINFO_FULL | syscall::SA_NODEFER,
-            sa_restorer: syscall::restore_rt as *const () as usize,
+            sa_restorer: restore_rt as *const () as usize,
             sa_mask: 0,
         };
         syscall::sigaction(syscall::SIGSEGV, &sa_segv, core::ptr::null_mut());
 
         let sa_io = syscall::SigAction {
-            sa_handler: segv_handler::sigio_handler as *const () as usize,
+            sa_handler: sigio_handler as *const () as usize,
             sa_flags: syscall::SA_SIGINFO_FULL | syscall::SA_NODEFER,
-            sa_restorer: syscall::restore_rt as *const () as usize,
+            sa_restorer: restore_rt as *const () as usize,
             sa_mask: 0,
         };
         syscall::sigaction(syscall::SIGIO, &sa_io, core::ptr::null_mut());
@@ -91,21 +111,7 @@ pub extern "C" fn init_mmio_simulator() {
             (syscall::O_ASYNC | syscall::O_NONBLOCK) as i64,
         );
 
-        // Send READY packet to parent
-        let ready = ipc_protocol::Request {
-            cmd: ipc_protocol::CMD_READY,
-            size: 0,
-            seq: 0,
-            _reserved: [0; 4],
-            address: 0,
-            value: 0,
-            timestamp: 0,
-        };
-        syscall::write(
-            1,
-            &ready as *const _ as *const u8,
-            core::mem::size_of::<ipc_protocol::Request>(),
-        );
+        send_ready();
     }
 }
 

@@ -1,16 +1,13 @@
+use crate::protocol::{send_read, send_write};
 use crate::syscall;
 use crate::{context::Context, syscall::exit};
 use core::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use iced_x86::{Decoder, MemorySize, Mnemonic, OpKind};
-use ipc_protocol::{Request, Response, CMD_READ, CMD_WRITE, RESP_DATA, RESP_INTERRUPT};
+use ipc_protocol::{Response, RESP_DATA, RESP_INTERRUPT};
 
-#[no_mangle]
 pub static WAITING_FOR_DATA: AtomicBool = AtomicBool::new(false);
-#[no_mangle]
 pub static LAST_READ_VALUE: AtomicU64 = AtomicU64::new(0);
-#[no_mangle]
 pub static NEXT_SEQ: AtomicU16 = AtomicU16::new(1);
-#[no_mangle]
 pub static CURRENT_WAIT_SEQ: AtomicU16 = AtomicU16::new(0);
 
 /// # Safety
@@ -59,61 +56,22 @@ pub unsafe extern "C" fn sigio_handler(
 
 fn mmio_read(addr: u64, size: MemorySize) -> u64 {
     let seq = NEXT_SEQ.fetch_add(1, Ordering::SeqCst);
-    let req = Request {
-        cmd: CMD_READ,
-        size: get_memory_size(size),
-        seq,
-        _reserved: [0; 4],
-        address: addr,
-        value: 0,
-        timestamp: 0,
-    };
-    unsafe {
-        CURRENT_WAIT_SEQ.store(seq, Ordering::SeqCst);
-        WAITING_FOR_DATA.store(true, Ordering::SeqCst);
 
-        syscall::write(
-            1,
-            &req as *const _ as *const u8,
-            core::mem::size_of::<Request>(),
-        );
+    CURRENT_WAIT_SEQ.store(seq, Ordering::SeqCst);
+    WAITING_FOR_DATA.store(true, Ordering::SeqCst);
 
-        while WAITING_FOR_DATA.load(Ordering::SeqCst) {
-            core::hint::spin_loop();
-        }
+    send_read(addr, size, seq);
 
-        LAST_READ_VALUE.load(Ordering::SeqCst)
+    while WAITING_FOR_DATA.load(Ordering::SeqCst) {
+        core::hint::spin_loop();
     }
+
+    LAST_READ_VALUE.load(Ordering::SeqCst)
 }
 
 fn mmio_write(addr: u64, value: u64, size: MemorySize) {
     let seq = NEXT_SEQ.fetch_add(1, Ordering::SeqCst);
-    let req = Request {
-        cmd: CMD_WRITE,
-        size: get_memory_size(size),
-        seq,
-        _reserved: [0; 4],
-        address: addr,
-        value,
-        timestamp: 0,
-    };
-    unsafe {
-        syscall::write(
-            1,
-            &req as *const _ as *const u8,
-            core::mem::size_of::<Request>(),
-        );
-    }
-}
-
-fn get_memory_size(ms: iced_x86::MemorySize) -> u8 {
-    match ms {
-        iced_x86::MemorySize::UInt8 | iced_x86::MemorySize::Int8 => 1,
-        iced_x86::MemorySize::UInt16 | iced_x86::MemorySize::Int16 => 2,
-        iced_x86::MemorySize::UInt32 | iced_x86::MemorySize::Int32 => 4,
-        iced_x86::MemorySize::UInt64 | iced_x86::MemorySize::Int64 => 8,
-        _ => 4,
-    }
+    send_write(addr, size, value, seq);
 }
 
 pub extern "C" fn mmio_segv_handler(

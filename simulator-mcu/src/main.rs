@@ -82,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut request_buf = [0u8; std::mem::size_of::<Request>()];
 
-    println!("Parent: Waiting for READY packet from child...");
+    println!("Parent: Waiting for Ready signal from App Process...");
     loop {
         child_stdout.read_exact(&mut request_buf).await?;
         let req: Request =
@@ -90,7 +90,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let req_cmd = req.cmd;
         let req_addr = req.address;
         if req_cmd == CMD_READY {
-            println!("Parent: Received READY. Starting main loop.");
             break;
         } else {
             println!(
@@ -100,7 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    println!("Parent: Entering main loop...");
+    println!("Parent: Received Ready signal. Starting MMIO simulation loop...");
     loop {
         match child_stdout.read_exact(&mut request_buf).await {
             Ok(_) => {
