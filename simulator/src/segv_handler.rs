@@ -1,14 +1,26 @@
-use crate::protocol::{send_read, send_write};
+use crate::protocol::{Protocol, ProtocolHandler};
 use crate::syscall;
 use crate::{context::Context, syscall::exit};
-use core::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
-use iced_x86::{Decoder, MemorySize, Mnemonic, OpKind};
-use ipc_protocol::{Response, RESP_DATA, RESP_INTERRUPT};
+use iced_x86::{Decoder, Mnemonic, OpKind};
 
-pub static WAITING_FOR_DATA: AtomicBool = AtomicBool::new(false);
-pub static LAST_READ_VALUE: AtomicU64 = AtomicU64::new(0);
-pub static NEXT_SEQ: AtomicU16 = AtomicU16::new(1);
-pub static CURRENT_WAIT_SEQ: AtomicU16 = AtomicU16::new(0);
+struct DefaultProtocolHandler;
+impl ProtocolHandler for DefaultProtocolHandler {
+    unsafe fn inject_interrupt(context: *mut core::ffi::c_void, _irq_num: u64) {
+        let ucontext = &mut *(context as *mut crate::context::UContext);
+        let mcontext = &mut ucontext.uc_mcontext;
+
+        let rsp = mcontext.gregs[15] as u64;
+        let new_rsp = rsp - 8;
+        let rip = mcontext.gregs[16] as u64;
+        *(new_rsp as *mut u64) = rip;
+        mcontext.gregs[15] = new_rsp as i64;
+
+        // Placeholder jump
+        // mcontext.gregs[16] = 0xdeadbeef;
+    }
+}
+
+static PROTOCOL: Protocol<DefaultProtocolHandler> = Protocol::new();
 
 /// # Safety
 ///
@@ -19,59 +31,7 @@ pub unsafe extern "C" fn sigio_handler(
     _info: *mut core::ffi::c_void,
     context: *mut core::ffi::c_void,
 ) {
-    loop {
-        let mut resp = Response {
-            resp_type: 0,
-            seq: 0,
-            _reserved: [0; 5],
-            value: 0,
-        };
-
-        let n = unsafe {
-            syscall::read(
-                0,
-                &mut resp as *mut _ as *mut u8,
-                core::mem::size_of::<Response>(),
-            )
-        };
-        if n <= 0 {
-            break;
-        }
-        if n == core::mem::size_of::<Response>() as isize {
-            match resp.resp_type {
-                RESP_DATA if resp.seq == CURRENT_WAIT_SEQ.load(Ordering::SeqCst) => {
-                    LAST_READ_VALUE.store(resp.value, Ordering::SeqCst);
-                    WAITING_FOR_DATA.store(false, Ordering::SeqCst);
-                }
-                RESP_INTERRUPT => unsafe {
-                    inject_interrupt(context, resp.value);
-                },
-                _ => {}
-            }
-        } else {
-            break;
-        }
-    }
-}
-
-fn mmio_read(addr: u64, size: MemorySize) -> u64 {
-    let seq = NEXT_SEQ.fetch_add(1, Ordering::SeqCst);
-
-    CURRENT_WAIT_SEQ.store(seq, Ordering::SeqCst);
-    WAITING_FOR_DATA.store(true, Ordering::SeqCst);
-
-    send_read(addr, size, seq);
-
-    while WAITING_FOR_DATA.load(Ordering::SeqCst) {
-        core::hint::spin_loop();
-    }
-
-    LAST_READ_VALUE.load(Ordering::SeqCst)
-}
-
-fn mmio_write(addr: u64, value: u64, size: MemorySize) {
-    let seq = NEXT_SEQ.fetch_add(1, Ordering::SeqCst);
-    send_write(addr, size, value, seq);
+    PROTOCOL.sigio_handler(context);
 }
 
 pub extern "C" fn mmio_segv_handler(
@@ -160,7 +120,7 @@ fn get_operand_value(ctx: &Context, op_idx: u32, inst: &iced_x86::Instruction) -
             let addr = inst
                 .virtual_address(op_idx, 0, |reg, _, _| ctx.get_register_value(reg))
                 .unwrap_or(0);
-            mmio_read(addr, inst.memory_size())
+            PROTOCOL.read(addr, inst.memory_size())
         }
         _ => 0,
     }
@@ -173,22 +133,8 @@ fn set_operand_value(ctx: &mut Context, inst: &iced_x86::Instruction, op_idx: u3
             let addr = inst
                 .virtual_address(op_idx, 0, |reg, _, _| ctx.get_register_value(reg))
                 .unwrap_or(0);
-            mmio_write(addr, value, inst.memory_size());
+            PROTOCOL.write(addr, value, inst.memory_size());
         }
         _ => {}
     }
-}
-
-unsafe fn inject_interrupt(context: *mut core::ffi::c_void, _irq_num: u64) {
-    let ucontext = &mut *(context as *mut crate::context::UContext);
-    let mcontext = &mut ucontext.uc_mcontext;
-
-    let rsp = mcontext.gregs[15] as u64;
-    let new_rsp = rsp - 8;
-    let rip = mcontext.gregs[16] as u64;
-    *(new_rsp as *mut u64) = rip;
-    mcontext.gregs[15] = new_rsp as i64;
-
-    // Placeholder jump
-    // mcontext.gregs[16] = 0xdeadbeef;
 }

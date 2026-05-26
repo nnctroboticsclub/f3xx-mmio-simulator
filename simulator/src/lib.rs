@@ -29,24 +29,18 @@ fn panic(info: &PanicInfo) -> ! {
     }
 }
 
-extern "C" {
-    fn malloc(size: usize) -> *mut u8;
-    fn free(ptr: *mut u8);
-}
-
-struct LibcAllocator {}
-unsafe impl core::alloc::GlobalAlloc for LibcAllocator {
-    unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        malloc(layout.size())
-    }
-    unsafe fn dealloc(&self, ptr: *mut u8, _layout: core::alloc::Layout) {
-        free(ptr)
-    }
-}
-
 struct BumpAllocator {
     heap: [u8; 1024 * 1024],
     pos: AtomicUsize,
+}
+impl BumpAllocator {
+    #[allow(clippy::new_without_default)]
+    const fn new() -> Self {
+        Self {
+            heap: [0; 1024 * 1024],
+            pos: AtomicUsize::new(0),
+        }
+    }
 }
 unsafe impl core::alloc::GlobalAlloc for BumpAllocator {
     unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
@@ -74,11 +68,9 @@ unsafe impl core::alloc::GlobalAlloc for BumpAllocator {
     }
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: core::alloc::Layout) {}
 }
+
 #[global_allocator]
-static ALLOCATOR: BumpAllocator = BumpAllocator {
-    heap: [0; 1024 * 1024],
-    pos: AtomicUsize::new(0),
-};
+static ALLOCATOR: BumpAllocator = BumpAllocator::new();
 
 #[no_mangle]
 pub extern "C" fn rust_eh_personality() {}
